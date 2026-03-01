@@ -1,0 +1,27 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "idf.openOcdConfigs": [
+    "board/esp32-wrover-kit-3.3v.cfg"
+  ],
+  "idf.buildPath": "${workspaceFolder}/build",
+  "idf.port": "/dev/ttyUSB0",
+  "idf.currentSetup": "/home/ronen/esp/v5.5.1/esp-idf",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32"
+  },
+  "clangd.path": "/home/ronen/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=/home/ronen/mekf_rtos/build"
+  ],
+  "ROS2.distro": "jazzy",
+  "python.autoComplete.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages"
+  ],
+  "python.analysis.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages"
+  ],
+  "idf.flashType": "UART"
+}
