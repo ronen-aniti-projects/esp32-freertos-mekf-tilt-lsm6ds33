@@ -14,6 +14,7 @@
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "driver/i2c_master.h"
 #include "esp_timer.h"
@@ -40,6 +41,8 @@ static const char *TAG = "MAIN";
 #define LSM6DS33_CTRL2_G_CONFIG      0x50       // 245dps
 #define LSM6DS33_CTRL3_C_CONFIG      0x44
 
+#define LSM6DS33_OUTX_L_G            0x22       // Start of measurement output block
+
 #define LSM6DS33_ACC_SENS_MG_PER_LSB       0.061f
 #define LSM6DS33_GYRO_SENS_MDPS_PER_LSB    8.75f
 
@@ -51,13 +54,12 @@ typedef struct {
     int16_t gx_raw;
     int16_t gy_raw;
     int16_t gz_raw;
-    float ax_ms2; 
-    float ay_ms2;
-    float az_ms2;
-    float gx_rps;
-    float gy_rps;
-    float gz_rps; 
 } imu_sample_t;
+
+static QueueHandle_t s_imu_q = NULL;
+static i2c_master_dev_handle_t s_dev_handle = NULL; 
+
+
 
 /**
  * @brief Read a sequence of bytes from LSM6DS33 sensor registers
@@ -99,6 +101,63 @@ static void i2c_master_init(i2c_master_bus_handle_t *bus_handle, i2c_master_dev_
     ESP_ERROR_CHECK(i2c_master_bus_add_device(*bus_handle, &dev_config, dev_handle));
 }
 
+
+static void imu_poll_task(void *pvParameters){
+
+    i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)pvParameters;
+
+    const TickType_t period = pdMS_TO_TICKS(5);      //200hz
+    TickType_t last_wake = xTaskGetTickCount(); 
+
+    for(;;){
+        
+
+        imu_sample_t sample = {0}; 
+        uint8_t s_buf[12];
+
+        esp_err_t err = lsm6ds33_register_read(dev_handle, LSM6DS33_OUTX_L_G, s_buf, sizeof(s_buf));
+        if (err != ESP_OK){
+            ESP_LOGW(TAG, "IMU read failed: %s", esp_err_to_name(err));
+            vTaskDelayUntil(&last_wake, period);
+            continue;
+        }
+        sample.gx_raw = (int16_t)((s_buf[1] << 8 | s_buf[0]));
+        sample.gy_raw = (int16_t)((s_buf[3] << 8 | s_buf[2]));
+        sample.gz_raw = (int16_t)((s_buf[5] << 8 | s_buf[4]));
+        sample.ax_raw = (int16_t)((s_buf[7] << 8 | s_buf[6]));
+        sample.ay_raw = (int16_t)((s_buf[9] << 8 | s_buf[8]));
+        sample.az_raw = (int16_t)((s_buf[11] << 8 | s_buf[10]));
+
+        sample.t_us = esp_timer_get_time();
+
+        if (xQueueOverwrite(s_imu_q, &sample) != pdPASS){
+            ESP_LOGW(TAG, "queue overwrite failed");
+        }
+        
+        vTaskDelayUntil(&last_wake, period);
+    }
+}
+
+static void fusion_task(void* pvParameters){
+    imu_sample_t sample; 
+
+    int skip_count = 0;
+
+    for(;;){
+        if (xQueueReceive(s_imu_q, &sample, portMAX_DELAY) == pdPASS){
+            if ((++skip_count % 20) == 0){
+                ESP_LOGI("Fusion", 
+                    "t=%lld, ax=%d, ay=%d, az=%d, gx=%d, gy=%d, gz=%d",
+                    sample.t_us, sample.ax_raw, sample.ay_raw, sample.az_raw, 
+                    sample.gx_raw, sample.gy_raw, sample.gz_raw);
+                if (skip_count >= 20){
+                    skip_count = 0; 
+                }        
+            }
+        }
+    }
+}
+
 void app_main(void)
 {
     uint8_t data[2];
@@ -111,10 +170,35 @@ void app_main(void)
     ESP_ERROR_CHECK(lsm6ds33_register_read(dev_handle, LSM6DS33_WHO_AM_I_REG_ADDR, data, 1));
     ESP_LOGI(TAG, "WHO_AM_I = 0x%02X (expected 0x%02X)", data[0], LSM6DS33_WHO_AM_I_VALUE);
 
-    /* Demonstrate writing by resetting the sensor */
-    //ESP_ERROR_CHECK(mpu9250_register_write_byte(dev_handle, MPU9250_PWR_MGMT_1_REG_ADDR, 1 << MPU9250_RESET_BIT));
+    // set xl odr and fsr
+    ESP_ERROR_CHECK(lsm6ds33_register_write_byte(dev_handle, LSM6DS33_CTRL1_XL, LSM6DS33_CTRL1_XL_CONFIG));
+    ESP_ERROR_CHECK(lsm6ds33_register_read(dev_handle, LSM6DS33_CTRL1_XL, data, 1));
+    ESP_LOGI(TAG, "CTRL1_XL = 0x%02X (expected 0x%02X)", data[0], LSM6DS33_CTRL1_XL_CONFIG);
 
-    ESP_ERROR_CHECK(i2c_master_bus_rm_device(dev_handle));
-    ESP_ERROR_CHECK(i2c_del_master_bus(bus_handle));
-    ESP_LOGI(TAG, "I2C de-initialized successfully");
+    // set gyro odr and fsr
+    ESP_ERROR_CHECK(lsm6ds33_register_write_byte(dev_handle, LSM6DS33_CTRL2_G, LSM6DS33_CTRL2_G_CONFIG));
+    ESP_ERROR_CHECK(lsm6ds33_register_read(dev_handle, LSM6DS33_CTRL2_G, data, 1));
+    ESP_LOGI(TAG, "CTRL2_G = 0x%02X (expected 0x%02X)", data[0], LSM6DS33_CTRL2_G_CONFIG);
+
+    // block data + auto-inc
+    ESP_ERROR_CHECK(lsm6ds33_register_write_byte(dev_handle, LSM6DS33_CTRL3_C, LSM6DS33_CTRL3_C_CONFIG));
+    ESP_ERROR_CHECK(lsm6ds33_register_read(dev_handle, LSM6DS33_CTRL3_C, data, 1));
+    ESP_LOGI(TAG, "CTRL3_C = 0x%02X (expected 0x%02X)", data[0], LSM6DS33_CTRL3_C_CONFIG);
+
+    // queue create - stores latest sample
+    s_imu_q = xQueueCreate(1, sizeof(imu_sample_t)); 
+
+
+    // imu poll task
+    xTaskCreate(imu_poll_task, "imu_poll_task", 4096, (void *)dev_handle, 8, NULL);
+
+    //fusion task
+    xTaskCreate(fusion_task,   "fusion_task",   4096, NULL,               7, NULL);
+    
+
+
+
+    //ESP_ERROR_CHECK(i2c_master_bus_rm_device(dev_handle));
+    //ESP_ERROR_CHECK(i2c_del_master_bus(bus_handle));
+    //ESP_LOGI(TAG, "I2C de-initialized successfully");
 }
