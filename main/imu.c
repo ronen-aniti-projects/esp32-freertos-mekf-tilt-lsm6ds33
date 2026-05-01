@@ -1,10 +1,11 @@
+#include <stdbool.h>
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "imu.h"
-
+#include <stdbool.h>
 
 #define I2C_MASTER_SCL_IO           CONFIG_I2C_MASTER_SCL       /*!< GPIO number used for I2C master clock */
 #define I2C_MASTER_SDA_IO           CONFIG_I2C_MASTER_SDA       /*!< GPIO number used for I2C master data  */
@@ -20,6 +21,10 @@
 #define LSM6DS33_CTRL2_G             0x11       // Gyro full-scale, ODR
 #define LSM6DS33_CTRL3_C             0x12       // Address auto-increment; block data update
 
+#define LSM6DS33_STATUS_REG          0x1E       // Signals new data ready
+#define LSM6DS33_STATUS_XLDA         (1 << 0)   // xl data ready bit mask
+#define LSM6DS33_STATUS_GDA          (1 << 1)   // gyro data ready bit mask
+
 #define LSM6DS33_CTRL1_XL_CONFIG     0x53       // (+/- 2g,  208 Hz)
 #define LSM6DS33_CTRL2_G_CONFIG      0x50       // (245dps, 208 Hz)
 #define LSM6DS33_CTRL3_C_CONFIG      0x44
@@ -33,8 +38,30 @@
 #define RAD_PER_SEC_SCALE                  (PI_F / 180000.0f)
 #define M_PER_SEC_SQUARED_SCALE            0.00981f
 
+// Accelerometer calibration constants
+#define ACCEL_CALIB_A11  0.99972752f
+#define ACCEL_CALIB_A12  -0.0132551f
+#define ACCEL_CALIB_A13  0.00412706f
+#define ACCEL_CALIB_A21  -0.01105377f
+#define ACCEL_CALIB_A22  1.00033675f
+#define ACCEL_CALIB_A23  0.00426244f
+#define ACCEL_CALIB_A31  0.00266891f
+#define ACCEL_CALIB_A32  0.0061789f
+#define ACCEL_CALIB_A33  0.99852329f
+#define ACCEL_CALIB_B1   -0.03898367f
+#define ACCEL_CALIB_B2   0.06519417f
+#define ACCEL_CALIB_B3    0.2730965f
 
 static const char *TAG = "LSM6DS33";
+
+static void apply_accel_calibration(imu_scaled_sample_t *scaled_sample){
+    float ax = scaled_sample->ax;
+    float ay = scaled_sample->ay;
+    float az = scaled_sample->az;
+    scaled_sample->ax = ACCEL_CALIB_A11 * ax + ACCEL_CALIB_A12 * ay + ACCEL_CALIB_A13 * az + ACCEL_CALIB_B1;
+    scaled_sample->ay = ACCEL_CALIB_A21 * ax + ACCEL_CALIB_A22 * ay + ACCEL_CALIB_A23 * az + ACCEL_CALIB_B2;
+    scaled_sample->az = ACCEL_CALIB_A31 * ax + ACCEL_CALIB_A32 * ay + ACCEL_CALIB_A33 * az + ACCEL_CALIB_B3;
+}
 
 /**
  * @brief Read a sequence of bytes from LSM6DS33 sensor registers
@@ -51,6 +78,19 @@ static esp_err_t lsm6ds33_register_write_byte(i2c_master_dev_handle_t dev_handle
 {
     uint8_t write_buf[2] = {reg_addr, data};
     return i2c_master_transmit(dev_handle, write_buf, sizeof(write_buf), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+}
+
+static esp_err_t lsm6ds33_data_ready(i2c_master_dev_handle_t dev_handle, bool *ready){
+    uint8_t status = 0;
+    esp_err_t err = lsm6ds33_register_read(dev_handle, LSM6DS33_STATUS_REG, &status, 1);
+
+    if (err != ESP_OK){
+        return err;
+    }
+
+    *ready = (status & (LSM6DS33_STATUS_XLDA | LSM6DS33_STATUS_GDA)) == (LSM6DS33_STATUS_XLDA | LSM6DS33_STATUS_GDA);
+
+    return ESP_OK;
 }
 
 /**
@@ -111,9 +151,20 @@ esp_err_t lsm6ds33_configure(i2c_master_dev_handle_t dev_handle){
 
 esp_err_t lsm6ds33_read_sample(i2c_master_dev_handle_t dev_handle, imu_sample_t *sample){
     
+    bool ready = false; 
+
+    esp_err_t err = lsm6ds33_data_ready(dev_handle, &ready);
+    if (err != ESP_OK){
+        return err;
+    }
+
+    if (!ready){
+        return ESP_ERR_NOT_FOUND;
+    }
+
     uint8_t s_buf[12];
 
-    esp_err_t err = lsm6ds33_register_read(dev_handle, LSM6DS33_OUTX_L_G, s_buf, sizeof(s_buf));
+    err = lsm6ds33_register_read(dev_handle, LSM6DS33_OUTX_L_G, s_buf, sizeof(s_buf));
     
     if (err != ESP_OK){
         ESP_LOGW(TAG, "IMU read failed: %s", esp_err_to_name(err));
@@ -133,9 +184,20 @@ esp_err_t lsm6ds33_read_sample(i2c_master_dev_handle_t dev_handle, imu_sample_t 
 
 esp_err_t lsm6ds33_read_scaled_sample(i2c_master_dev_handle_t dev_handle, imu_scaled_sample_t *scaled_sample){
     
+    bool ready = false; 
+
+    esp_err_t err = lsm6ds33_data_ready(dev_handle, &ready);
+    if (err != ESP_OK){
+        return err;
+    }
+
+    if (!ready){
+        return ESP_ERR_NOT_FOUND;
+    }
+    
     uint8_t s_buf[12];
 
-    esp_err_t err = lsm6ds33_register_read(dev_handle, LSM6DS33_OUTX_L_G, s_buf, sizeof(s_buf));
+    err = lsm6ds33_register_read(dev_handle, LSM6DS33_OUTX_L_G, s_buf, sizeof(s_buf));
     
     if (err != ESP_OK){
         ESP_LOGW(TAG, "IMU read failed: %s", esp_err_to_name(err));
@@ -147,8 +209,14 @@ esp_err_t lsm6ds33_read_scaled_sample(i2c_master_dev_handle_t dev_handle, imu_sc
     scaled_sample->ax = (int16_t)((s_buf[7] << 8 | s_buf[6])) * LSM6DS33_ACC_SENS_MG_PER_LSB * M_PER_SEC_SQUARED_SCALE;
     scaled_sample->ay = (int16_t)((s_buf[9] << 8 | s_buf[8])) * LSM6DS33_ACC_SENS_MG_PER_LSB * M_PER_SEC_SQUARED_SCALE;
     scaled_sample->az = (int16_t)((s_buf[11] << 8 | s_buf[10])) * LSM6DS33_ACC_SENS_MG_PER_LSB * M_PER_SEC_SQUARED_SCALE; 
+    
+    // Apply an emperically-determined calibration result
+    apply_accel_calibration(scaled_sample);
+
     scaled_sample->t_us = esp_timer_get_time();
 
     return ESP_OK;
     
 }
+
+

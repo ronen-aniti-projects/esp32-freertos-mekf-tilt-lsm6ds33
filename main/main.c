@@ -11,6 +11,7 @@
    The sensor used in this example is an LSM6DS33 inertial measurement unit.
 */
 #include <stdio.h>
+#include <stddef.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,51 +20,158 @@
 #include "driver/i2c_master.h"
 #include "esp_timer.h"
 #include "imu.h"
+#include "fusion.h"
+#include <math.h>
+#include "math_lib.h"
+
+///////////////////////////////////////////////////////////////
+/* // Implement RAM-based IMU log buffer
+#define LOG_N 5000
+static imu_scaled_sample_t log_buffer[LOG_N];
+static size_t log_count = 0;
+static bool capture_done = false;  */
+///////////////////////////////////////////////////////////////
 
 static const char *TAG = "MAIN";
 
 static QueueHandle_t s_imu_q = NULL;
-static i2c_master_dev_handle_t s_dev_handle = NULL; 
+static QueueHandle_t log_q = NULL;
+
+typedef struct{
+    int64_t t_us;
+    float q_hat[4];
+    float b_hat[3];
+    float P[6][6];
+} fusion_log_t;
 
 static void imu_poll_task(void *pvParameters){
 
     i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)pvParameters;
-
-    const TickType_t period = pdMS_TO_TICKS(5);      //200 Hz
+    const TickType_t period = pdMS_TO_TICKS(1);      //1 KHz (faster than ODR)
     TickType_t last_wake = xTaskGetTickCount(); 
 
     for(;;){
 
+        // Read the IMU
         imu_scaled_sample_t sample = {0}; 
-
         esp_err_t err = lsm6ds33_read_scaled_sample(dev_handle, &sample);
+
+        // Read didn't work
+        if (err == ESP_ERR_NOT_FOUND){
+            vTaskDelayUntil(&last_wake, period);
+            continue; 
+        }
+
+        // Data wasn't ready
         if (err != ESP_OK){
             vTaskDelayUntil(&last_wake, period);
             continue; 
         }
 
+
+/*         // Write N successive samples to buffer than print for logging
+        if (!capture_done && err == ESP_OK){
+            if (log_count < LOG_N){
+                log_buffer[log_count++] = sample; 
+
+            } else {
+                capture_done = true; 
+            }
+        }
+
+        // Once the capture finishes, just stop the task
+        if (capture_done){
+            for (size_t i = 0; i < log_count; ++i){
+                printf("%lld,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                log_buffer[i].t_us,
+                log_buffer[i].ax, log_buffer[i].ay, log_buffer[i].az, 
+                 log_buffer[i].gx, log_buffer[i].gy, log_buffer[i].gz);
+            }
+            vTaskDelay(portMAX_DELAY);
+        }
+ */
+
+        // Queue latest sample
         if (xQueueOverwrite(s_imu_q, &sample) != pdPASS){
             ESP_LOGW(TAG, "queue overwrite failed");
         }
+
+        // Delay until period end
         vTaskDelayUntil(&last_wake, period);
+
+
+
     }
 }
 
 static void fusion_task(void* pvParameters){
+    
+    // Temporary
+    //vTaskDelay(portMAX_DELAY)
     imu_scaled_sample_t sample; 
+    
+    fusion_state_t fusion_state = {0};
+    fusion_init(&fusion_state);
 
-    int skip_count = 0;
 
-    for(;;){
+    uint64_t count = 0;
+
+    const uint64_t skip = 10;
+
+    for(;;){    
+       
 
         if (xQueueReceive(s_imu_q, &sample, portMAX_DELAY)){
-            skip_count = (skip_count + 1) % 2;
-            if (skip_count == 0){
-                printf("%lld,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
-                    sample.t_us,
-                    sample.ax, sample.ay, sample.az,
-                    sample.gx, sample.gy, sample.gz);
+                    
+            fusion_propagate(&fusion_state, &sample);
+            fusion_correct(&fusion_state, &sample);
+            
+            count++; 
+
+            if (count % skip == 0){
+                fusion_log_t log = {0};
+                log.t_us = sample.t_us;
+                for (int i = 0; i < 4; ++i) log.q_hat[i] = fusion_state.q_hat[i];
+                for (int i = 0; i < 3; ++i) log.b_hat[i] = fusion_state.b_hat[i];
+                for (int i = 0; i < 6; ++i){
+                    for (int j = 0; j < 6; ++j){
+                        log.P[i][j] = fusion_state.P[i][j];
+
+                    }
                 }
+
+                xQueueSend(log_q, &log, 0);
+            }
+
+
+
+
+        }
+    }
+}
+
+static void logging_task(void *pvParameters){
+    fusion_log_t log;
+
+    for (;;) {
+        if (xQueueReceive(log_q, &log, portMAX_DELAY)) {
+            printf("%lld", log.t_us);
+
+            for (int i = 0; i < 4; ++i) {
+                printf(", %.9e", log.q_hat[i]);
+            }
+
+            for (int i = 0; i < 3; ++i) {
+                printf(", %.9e", log.b_hat[i]);
+            }
+
+            for (int i = 0; i < 6; ++i) {
+                for (int j = 0; j < 6; ++j) {
+                    printf(", %.9e", log.P[i][j]);
+                }
+            }
+
+            printf("\n");
         }
     }
 }
@@ -73,21 +181,29 @@ void app_main(void){
     i2c_master_bus_handle_t bus_handle;
     i2c_master_dev_handle_t dev_handle;
     
-    lsm6ds33_init(&bus_handle, &dev_handle);
+    lsm6ds33_init(&bus_handle, &dev_handle);  
     lsm6ds33_configure(dev_handle);
 
     // log header
-    printf("t_us,ax,ay,az,gx,gy,gz\n");
+    //printf("t_us,ax,ay,az,gx,gy,gz\n");
  
 
     // queue create - stores latest sample
     s_imu_q = xQueueCreate(1, sizeof(imu_scaled_sample_t)); 
+
+    // log queue
+    log_q = xQueueCreate(64, sizeof(fusion_log_t));
+
+
 
     // imu poll task
     xTaskCreate(imu_poll_task, "imu_poll_task", 4096, (void *)dev_handle, 8, NULL);
 
     //fusion task
     xTaskCreate(fusion_task,   "fusion_task",   4096, NULL,               7, NULL);
+
+    // logging task
+    xTaskCreate(logging_task, "logging_task", 4096, NULL, 6, NULL);
 
     //ESP_ERROR_CHECK(i2c_master_bus_rm_device(dev_handle));
     //ESP_ERROR_CHECK(i2c_del_master_bus(bus_handle));
