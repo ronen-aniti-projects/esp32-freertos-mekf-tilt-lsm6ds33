@@ -42,6 +42,9 @@ typedef struct{
     float q_hat[4];
     float b_hat[3];
     float P[6][6];
+    float S[3][3]; 
+    float r[3];
+    float Qd[6][6];
 } fusion_log_t;
 
 static void imu_poll_task(void *pvParameters){
@@ -126,8 +129,9 @@ static void fusion_task(void* pvParameters){
             fusion_propagate(&fusion_state, &sample);
             fusion_correct(&fusion_state, &sample);
             
-            count++; 
 
+
+            count++; 
             if (count % skip == 0){
                 fusion_log_t log = {0};
                 log.t_us = sample.t_us;
@@ -136,8 +140,18 @@ static void fusion_task(void* pvParameters){
                 for (int i = 0; i < 6; ++i){
                     for (int j = 0; j < 6; ++j){
                         log.P[i][j] = fusion_state.P[i][j];
+                        log.Qd[i][j] = fusion_state.debug_Qd[i][j];
+
 
                     }
+                }
+                for (int i = 0; i < 3; ++i){
+                    for (int j = 0; j < 3; ++j){
+                        log.S[i][j] = fusion_state.debug_S[i][j];
+                    }
+                }
+                for (int i = 0; i < 3; ++i){
+                    log.r[i] = fusion_state.debug_r[i];
                 }
 
                 xQueueSend(log_q, &log, 0);
@@ -165,12 +179,28 @@ static void logging_task(void *pvParameters){
                 printf(", %.9e", log.b_hat[i]);
             }
 
+            for (int i = 0; i < 3; ++i) {
+                printf(", %.9e", log.r[i]);
+            }
+
             for (int i = 0; i < 6; ++i) {
                 for (int j = 0; j < 6; ++j) {
                     printf(", %.9e", log.P[i][j]);
                 }
             }
 
+            for (int i = 0; i < 6; ++i) {
+                for (int j = 0; j < 6; ++j) {
+                    printf(", %.9e", log.Qd[i][j]);
+                }
+            }
+
+
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    printf(", %.9e", log.S[i][j]);
+                }
+            }
             printf("\n");
         }
     }

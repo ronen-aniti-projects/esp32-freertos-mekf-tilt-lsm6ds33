@@ -1,6 +1,7 @@
 #pragma once 
 
 #include <stdint.h>
+#include <stdbool.h>
 
 extern const float eye4[4][4];
 extern const float eye6[6][6];
@@ -70,7 +71,7 @@ void calculate_matrix_multiply_6x6_6x3(const float matrix_in_1[6][6], const floa
 void calculate_matrix_multiply_6x3_3x3(const float matrix_in_1[6][3], const float matrix_in_2[3][3], float matrix_result[6][3]);
 void calculate_matrix_multiply_3x6_6x3(const float matrix_in_1[3][6], const float matrix_in_2[6][3], float matrix_result[3][3]);
 void calculate_matrix_vector_product_6x3_3x1(const float matrix_in[6][3], const float vector_in[3], float vector_result[6]);
-void calculate_invert_3x3_matrix(const float input_matrix[3][3], float output_matrix[3][3]);
+bool calculate_invert_3x3_matrix(const float input_matrix[3][3], float output_matrix[3][3]);
 void calculate_transpose_3x6(const float input_matrix_3x6[3][6], float output_matrix_6x3[6][3]); 
 void calculate_transpose_6x3(const float input_matrix_6x3[6][3], float output_matrix_3x6[3][6]); 
 void calculate_matrix_6x6_subtract(const float input_matrix_1[6][6], float input_matrix_2[6][6], float result_matrix[6][6]);
@@ -83,3 +84,7 @@ void calculate_quaternion_multiply(const float dq[4], const float q[4], float re
 void calculate_matrix_3x3_vector_3x1_product(const float input_matrix[3][3], const float input_vector[3], float result[3]);
 void assemble_H_matrix(const float skew_rotated_accel_matrix[3][3], float H_matrix[3][6]);
 void normalize_3(float accel[3]);
+
+
+void calculate_make_symmetric_6x6(float matrix_6x6[6][6]);
+void calculate_make_symmetric_3x3(float matrix_3x3[3][3]);

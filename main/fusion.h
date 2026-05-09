@@ -9,6 +9,10 @@ typedef struct {
     float P[6][6];
     float omega_hat_prev[3];
     int64_t last_t_us; 
+
+    float debug_S[3][3]; 
+    float debug_r[3];
+    float debug_Qd[6][6];
 } fusion_state_t;
 
 void fusion_init(fusion_state_t *fusion_state);

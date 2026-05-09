@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 plt.style.use("bmh")
 
 rows = []
-expected_cols = 44
+expected_cols = 92 #44
 
-with open("log/proponlysmallerp4.csv") as f:
+with open("logc.csv") as f:
     for line in f:
         parts = [x.strip() for x in line.split(",")]
         if len(parts) != expected_cols:
@@ -17,11 +17,17 @@ with open("log/proponlysmallerp4.csv") as f:
             continue
 data = np.array(rows)
 
+
 t = (data[:, 0] - data[0, 0]) * 1e-6
 q = data[:, 1:5]
 b = data[:, 5:8]
-P = data[:, 8:].reshape(-1, 6, 6)
 
+# actual P
+#P = data[:, 11:47].reshape(-1, 6, 6) 
+# Qd
+#P = data[:, 47:83].reshape(-1, 6, 6) 
+# S
+P = data[:, 83:93].reshape(-1, 3, 3) 
 
 eigs = np.linalg.eigvalsh(P)
 
@@ -99,6 +105,7 @@ plt.title(r"Propagation-Only Growth of Attitude Error Covariance $\mathbf{P}_{0:
 plt.savefig("docs/media/p_trace_attitude_propagation.png", dpi=150, bbox_inches="tight")
 
 plt.show()
+
 
 #plot the trace of P 4-6
 P_trace_bias = np.trace(P[:, 3:6, 3:6], axis1=1, axis2=2)

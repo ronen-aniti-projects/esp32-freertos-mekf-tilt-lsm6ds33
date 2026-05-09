@@ -6,6 +6,7 @@
 #include "esp_timer.h"
 #include "imu.h"
 #include <stdbool.h>
+#include "math_lib.h"
 
 #define I2C_MASTER_SCL_IO           CONFIG_I2C_MASTER_SCL       /*!< GPIO number used for I2C master clock */
 #define I2C_MASTER_SDA_IO           CONFIG_I2C_MASTER_SDA       /*!< GPIO number used for I2C master data  */
@@ -39,29 +40,32 @@
 #define M_PER_SEC_SQUARED_SCALE            0.00981f
 
 // Accelerometer calibration constants
-#define ACCEL_CALIB_A11  0.99972752f
-#define ACCEL_CALIB_A12  -0.0132551f
-#define ACCEL_CALIB_A13  0.00412706f
-#define ACCEL_CALIB_A21  -0.01105377f
-#define ACCEL_CALIB_A22  1.00033675f
-#define ACCEL_CALIB_A23  0.00426244f
-#define ACCEL_CALIB_A31  0.00266891f
-#define ACCEL_CALIB_A32  0.0061789f
-#define ACCEL_CALIB_A33  0.99852329f
-#define ACCEL_CALIB_B1   -0.03898367f
-#define ACCEL_CALIB_B2   0.06519417f
-#define ACCEL_CALIB_B3    0.2730965f
+
+static const float ACCEL_CALIB_A_INVERSE_MATRIX[3][3]  = {
+    {1.0004306f, 0.01328223f, -0.00419165f},
+    {0.01106649f,  0.99983665f, -0.00431378f},
+    {-0.00274249f, -0.00622253f,  1.00151679f}
+};
+
+static const float ACCEL_CALIB_B_VECTOR[3] = {-0.03898367f, 
+                                               0.06519417f, 
+                                               0.2730965f};
 
 static const char *TAG = "LSM6DS33";
 
 static void apply_accel_calibration(imu_scaled_sample_t *scaled_sample){
-    float ax = scaled_sample->ax;
-    float ay = scaled_sample->ay;
-    float az = scaled_sample->az;
-    scaled_sample->ax = ACCEL_CALIB_A11 * ax + ACCEL_CALIB_A12 * ay + ACCEL_CALIB_A13 * az + ACCEL_CALIB_B1;
-    scaled_sample->ay = ACCEL_CALIB_A21 * ax + ACCEL_CALIB_A22 * ay + ACCEL_CALIB_A23 * az + ACCEL_CALIB_B2;
-    scaled_sample->az = ACCEL_CALIB_A31 * ax + ACCEL_CALIB_A32 * ay + ACCEL_CALIB_A33 * az + ACCEL_CALIB_B3;
+    float a_meas[3] = {scaled_sample->ax, scaled_sample->ay, scaled_sample->az};
+    float b_vec_neg[3] = {0.0f};
+    float a_minus_b[3] = {0.0f};
+    float transformed[3] = {0.0f};
+    calculate_vec3_scale(ACCEL_CALIB_B_VECTOR, -1.0f, b_vec_neg);
+    calculate_vec3_sum(a_meas, b_vec_neg, a_minus_b);
+    calculate_matrix_3x3_vector_3x1_product(ACCEL_CALIB_A_INVERSE_MATRIX, a_minus_b, transformed);
+    scaled_sample->ax = transformed[0];
+    scaled_sample->ay = transformed[1];
+    scaled_sample->az = transformed[2]; 
 }
+
 
 /**
  * @brief Read a sequence of bytes from LSM6DS33 sensor registers
@@ -88,6 +92,7 @@ static esp_err_t lsm6ds33_data_ready(i2c_master_dev_handle_t dev_handle, bool *r
         return err;
     }
 
+    // Ready only if both gyro and accel are ready
     *ready = (status & (LSM6DS33_STATUS_XLDA | LSM6DS33_STATUS_GDA)) == (LSM6DS33_STATUS_XLDA | LSM6DS33_STATUS_GDA);
 
     return ESP_OK;
@@ -210,7 +215,9 @@ esp_err_t lsm6ds33_read_scaled_sample(i2c_master_dev_handle_t dev_handle, imu_sc
     scaled_sample->ay = (int16_t)((s_buf[9] << 8 | s_buf[8])) * LSM6DS33_ACC_SENS_MG_PER_LSB * M_PER_SEC_SQUARED_SCALE;
     scaled_sample->az = (int16_t)((s_buf[11] << 8 | s_buf[10])) * LSM6DS33_ACC_SENS_MG_PER_LSB * M_PER_SEC_SQUARED_SCALE; 
     
-    // Apply an emperically-determined calibration result
+    // Apply an emperically-determined calibration result for accel
+    // For the gyroscope, don't apply immediete calibration. Instead, use calibration 
+    // constants to initialize the gyro bias estimate in fusion.c
     apply_accel_calibration(scaled_sample);
 
     scaled_sample->t_us = esp_timer_get_time();

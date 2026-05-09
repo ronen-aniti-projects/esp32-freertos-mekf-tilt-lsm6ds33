@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 plt.style.use("bmh")
 
 rows = []
-expected_cols = 44
+expected_cols = 92 #44
 
-with open("log/test15.csv") as f:
+with open("starttilted.csv") as f:
     for line in f:
         parts = [x.strip() for x in line.split(",")]
         if len(parts) != expected_cols:
@@ -19,11 +19,18 @@ with open("log/test15.csv") as f:
             continue
 data = np.array(rows)
 
+
 t = (data[:, 0] - data[0, 0]) * 1e-6
 q = data[:, 1:5]
 b = data[:, 5:8]
-P = data[:, 8:].reshape(-1, 6, 6)
+r = data[:, 8:11]
 
+# actual P
+P = data[:, 11:47].reshape(-1, 6, 6) 
+# Qd
+#P = data[:, 47:83].reshape(-1, 6, 6) 
+# S
+#P = data[:, 83:93].reshape(-1, 3, 3) 
 
 qx = q[:, 0]
 qy = q[:, 1]
@@ -41,6 +48,54 @@ q_skew[:, 2, 1] = qx
 
 
 R = (2.0 * qw[:, None, None]**2- 1.0) * np.eye(3) - 2.0 * qw[:, None, None] * q_skew + 2.0 * q_v[:, :, None] * q_v[:, None, :]
+tilt = np.arccos(np.clip(np.array([0.0, 0.0, 1.0]) @ np.transpose(R, (0, 2, 1)) @ np.array([0.0, 0.0, 1.0]), -1.0, 1.0))
+plt.figure()
+plt.plot(t, np.rad2deg(tilt))
+plt.xlabel("Time [s]")
+plt.ylabel("Tilt [deg]")
+plt.title("Tilt vs Time")
+plt.grid(True)
+
+plt.figure()
+plt.plot(t, b[:, 0], label="b_x")
+plt.plot(t, b[:, 1], label="b_y")
+plt.plot(t, b[:, 2], label="b_z")
+plt.xlabel("Time [s]")
+plt.ylabel("Bias estimate [rad/s]")
+plt.title("Gyro Bias Estimate vs Time")
+plt.legend()
+plt.grid(True)
+
+P_diag = np.diagonal(P, axis1=1, axis2=2)
+
+fig, axs = plt.subplots(6, 1, sharex=True, figsize=(10, 8))
+for i, ax in enumerate(axs):
+    ax.plot(t, P_diag[:, i])
+    ax.set_ylabel(f"P[{i},{i}]")
+    ax.grid(True)
+
+axs[-1].set_xlabel("Time [s]")
+fig.suptitle("P Diagonal Elements vs Time")
+fig.tight_layout()
+
+r_norm = np.linalg.norm(r, axis=1)
+
+fig = plt.figure(figsize=(9, 7))
+ax = fig.add_subplot(111, projection="3d")
+sc = ax.scatter(r[:, 0], r[:, 1], r[:, 2], c=t, s=8, cmap="viridis")
+ax.set_xlabel(r"$r_x$ [m/s$^2$]")
+ax.set_ylabel(r"$r_y$ [m/s$^2$]")
+ax.set_zlabel(r"$r_z$ [m/s$^2$]")
+ax.set_title("Accelerometer Residual Trajectory")
+fig.colorbar(sc, ax=ax, label="Time [s]", pad=0.1)
+fig.tight_layout()
+
+plt.figure()
+plt.plot(t, r_norm)
+plt.xlabel("Time [s]")
+plt.ylabel(r"$\|\mathbf{r}\|$ [m/s$^2$]")
+plt.title("Accelerometer Residual Norm")
+plt.grid(True)
 
 
 

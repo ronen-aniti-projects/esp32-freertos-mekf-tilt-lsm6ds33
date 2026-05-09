@@ -2,21 +2,21 @@
 #include "math_lib.h"
 
 // Used to construct an initial Q matrix (Q0)
-static const float ODR = 208.0;
-static const float DT_SEC = 1.0 / ODR;
-static const float GYRO_RATE_VARIANCE_X = 5.5886e-6 * DT_SEC;          // based on emperical stationary gx variance         
-static const float GYRO_RATE_VARIANCE_Y = 4.9785e-6 * DT_SEC;          // based on emperical stationary gy variance
-static const float GYRO_RATE_VARIANCE_Z = 1.7574e-6 * DT_SEC;          // based on emperical stationary gz variance
+//static const float ODR = 208.0f;
+//static const float DT_SEC = 1.0f / ODR;
+static const float GYRO_RATE_VARIANCE_X = 5.5886e-4f; //5.5886e-6f * DT_SEC;          // based on emperical stationary gx variance         
+static const float GYRO_RATE_VARIANCE_Y = 4.9785e-4f; //4.9785e-6f * DT_SEC;          // based on emperical stationary gy variance
+static const float GYRO_RATE_VARIANCE_Z = 1.7574e-4f; //1.7574e-6f * DT_SEC;          // based on emperical stationary gz variance
 static const float GYRO_RATE_VARIANCE = 
     (GYRO_RATE_VARIANCE_X + GYRO_RATE_VARIANCE_Y + GYRO_RATE_VARIANCE_Z) / 3.0;  // Trawney MEKF assumes isotropic noise 
-static const float GYRO_BIAS_WALK_VARIANCE = GYRO_RATE_VARIANCE / 2.0;           // guess - not based on emperical data
+static const float GYRO_BIAS_WALK_VARIANCE = GYRO_RATE_VARIANCE * 1e-3f;           // guess - not based on emperical data
 
 // Used to construct an initial P matrix (P0)
-static const float P0_ANGULAR = 1e-6f;                        // Guess quaternion uncertainty [rad^2]
-static const float P0_BIAS    = 1e-6f;                        // Guess bias uncertainty [rad^2/s^2]
+static const float P0_ANGULAR = 1e-1f;                        // Guess quaternion uncertainty [rad^2]
+static const float P0_BIAS    = 1e-1f;                        // Guess bias uncertainty [rad^2/s^2]
 
 // Used to construct an initial R matrix (R0)
-static const float ACCEL_VARIANCE = 1e-2f;
+static const float ACCEL_VARIANCE = 1e-2f;     
 
 // Constant matrix used in MARS lab MEKF paper
 const float gc_matrix[6][6] = { {-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
@@ -58,7 +58,7 @@ void fusion_init(fusion_state_t *fusion_state){
     fusion_state->q_hat[3] = 1.0f;
 
     // Initialize b_hat (rps) with bias determined empirically 
-    fusion_state->b_hat[0] = 0.05883807f;
+    fusion_state->b_hat[0] =  0.05883807f;
     fusion_state->b_hat[1] = -0.14938366f;
     fusion_state->b_hat[2] = -0.04615213f;
 
@@ -68,10 +68,16 @@ void fusion_init(fusion_state_t *fusion_state){
     return;
 }
 
-
-
 void fusion_propagate(fusion_state_t *fusion_state, const imu_scaled_sample_t *scaled_sample){
     
+    // Propagate bias (do nothing)
+    // Compute bias-compensated gyro (subtract estimated bias)
+    // Integrate nominal quaternion forward with 1st order integration
+    // Calculate the state transition matrix (cap_phi_matrix)
+    // Calculate the discrete time noise covariance matrix (Qd_matrix)
+    // Compute the state covariance matrix 
+    // Update the state with P, q, b_hat, omega_hat
+
     // Zero initialize all variables used in propagate calculations
     float omega_now[3] = {0.0f};
     float b_hat_neg[3] = {0.0f};
@@ -85,6 +91,7 @@ void fusion_propagate(fusion_state_t *fusion_state, const imu_scaled_sample_t *s
     float cap_phi_tranpose[6][6] = {{0.0f}};
     float intermediate_product_1[6][6] = {{0.0f}};
     float intermediate_product_2[6][6] = {{0.0f}};
+
 
     // Unpack the raw gyro rate vector
     omega_now[0] = scaled_sample->gx;
@@ -131,12 +138,21 @@ void fusion_propagate(fusion_state_t *fusion_state, const imu_scaled_sample_t *s
     }
     calculate_Q22_matrix(GYRO_BIAS_WALK_VARIANCE, dt, omega_hat_now, q_22_matrix);    
     calculate_assemble_Qd_matrix(q_11_matrix, q_12_matrix, q_22_matrix, qd_matrix);
+   //calculate_make_symmetric_6x6(qd_matrix);
+
+   for (int i = 0; i < 6; ++i){
+    for (int j = 0; j < 6; ++j){
+        fusion_state->debug_Qd[i][j] = qd_matrix[i][j];
+    }
+   }
+
 
     // Update P
     calculate_transpose_6x6(cap_phi, cap_phi_tranpose);
     calculate_matrix_multiply_6x6_6x6(fusion_state->P, cap_phi_tranpose, intermediate_product_1);
     calculate_matrix_multiply_6x6_6x6(cap_phi, intermediate_product_1, intermediate_product_2);
     calculate_matrix_6x6_sum(intermediate_product_2, qd_matrix, fusion_state->P);
+    //calculate_make_symmetric_6x6(fusion_state->P);
 
     // Record timestamp 
     fusion_state->last_t_us = scaled_sample->t_us;
@@ -149,6 +165,18 @@ void fusion_propagate(fusion_state_t *fusion_state, const imu_scaled_sample_t *s
 }
 
 void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *scaled_sample){
+
+    // Computes the measurement Jacobian (H)
+    // Computes the residual/innovation given the accelerometer measurement vs the expectation given the estimate
+    // Compute the innovation covariance (S)
+    // Compute the Kalman gain (K)
+    // Compute the correction vector (delta_x) from Kr
+    // Compute the multiplicative adjustment from the correction angle vector
+    // Apply the multiplicative adjustment to the nominal estimate quaternion
+    // Apply the correction vector gyro bias to the norminal bias estimate
+    // Update q_hat, b_hat, P, omega_hat 
+
+
     // Define some local variables
     float H_matrix[3][6] = {{0.0f}};
     float rotation_q_est_matrix[3][3] = {{0.0f}};
@@ -196,11 +224,11 @@ void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *sca
     float PIKHT_matrix[6][6] = {{0.0f}};
     float IKHPIKHT_matrix[6][6] = {{0.0f}};
     float P_updated_matrix[6][6] = {{0.0f}};
-    float g_direction_nav[3] = {0.0, 0.0, 1.0};
+    float g_direction_nav[3] = {0.0, 0.0, 9.81};
 
-    // Record latest accel sample and normalize it
+    // Record latest accel sample
     float accel_meas[3] = {scaled_sample->ax, scaled_sample->ay, scaled_sample->az};
-    normalize_3(accel_meas);
+    
 
     // Compute the rotation matrix global->local estimate for this timestep
     calculate_rotation_matrix_from_quaternion(fusion_state->q_hat, rotation_q_est_matrix);
@@ -217,15 +245,33 @@ void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *sca
     // Compute the residual z-zhat
     calculate_vec3_scale(rotated_accel, -1.0f, neg_rotated_accel);
     calculate_vec3_sum(accel_meas, neg_rotated_accel, residual);
+
+    // debug log residual
+    for (int i = 0; i < 3; ++i){
+        fusion_state->debug_r[i] = residual[i];
+    }
+    
     
     // Compute the covariance of the residual S
     calculate_transpose_3x6(H_matrix, H_transpose_matrix);
     calculate_matrix_multiply_6x6_6x3(P_matrix, H_transpose_matrix, P_H_transpose_matrix);
     calculate_matrix_multiply_3x6_6x3(H_matrix, P_H_transpose_matrix, H_P_H_transpose_matrix);
     calculate_matrix_3x3_sum(H_P_H_transpose_matrix, r_matrix, S_matrix);
+    //calculate_make_symmetric_3x3(S_matrix);
+
+    // Debug log S
+    for (int i = 0; i < 3; ++i){
+        for (int j = 0; j < 3; ++j){
+            fusion_state->debug_S[i][j] = S_matrix[i][j];
+        }
+    }
 
     // Compute the Kalman gain 
-    calculate_invert_3x3_matrix(S_matrix, S_inv_matrix);
+    bool err = false;
+    err = calculate_invert_3x3_matrix(S_matrix, S_inv_matrix);
+    if (err){
+        return;
+    }
     calculate_matrix_multiply_6x3_3x3(H_transpose_matrix, S_inv_matrix, H_transpose_S_inv_matrix);
     calculate_matrix_multiply_6x6_6x3(P_matrix, H_transpose_S_inv_matrix, K_matrix);
 
@@ -263,6 +309,7 @@ void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *sca
     calculate_matrix_multiply_6x6_6x6(P_matrix, IKH_transpose_matrix, PIKHT_matrix);
     calculate_matrix_multiply_6x6_6x6(IKH_matrix, PIKHT_matrix, IKHPIKHT_matrix);
     calculate_matrix_6x6_sum(IKHPIKHT_matrix, KRKT_matrix, P_updated_matrix);
+    //calculate_make_symmetric_6x6(P_updated_matrix);
 
     // Record the bias compensated gyro (omega_hat) and b_hat
     for (int i = 0; i < 3; ++i){
@@ -281,8 +328,6 @@ void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *sca
             fusion_state->P[i][j] = P_updated_matrix[i][j];
         }
     }
-
-
 
 }
 

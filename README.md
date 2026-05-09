@@ -4,17 +4,39 @@
 My learning objective is to demonstrate (i) that I’m able to implement, from first-principles, in firmware, under FreeRTOS, on an ESP32, a multiplicative extended Kalman filter (MEKF) that correctly estimates the angular tilt of an LSM6DS33 6-axis MEMS gyroscope-accelerometer IMU, embedded on a MinIMU-9 v5 IMU breakout board, (ii) that I’m able to explain, in a coherent way, the implementation process–from deciphering the underpinning mathematics and logic of the MEKF, to understanding how the I2C sensor register reads work, to organizing the project for an RTOS, to finally carrying out simple manual tests that confirm the filter achieved its intended purpose. 
 
 ## Technical Problem Statement
-Implement, under FreeRTOS, on an ESP32, an MEKF (multiplicative extended Kalman filter) that correctly determines, from LSM6DS33 gyroscope and accelerometer measurements, the angular tilt of the LSM6DS33 embedded on the MinIMU-9 v5 IMU breakout board. Here, the term “angular tilt” refers to a description of angular orientation that includes only the roll and pitch angular degrees of freedom (DoFs), not the yaw DoF, which indicates rotation about the gravity “down” direction in the inertial reference frame. 
+Implement, under FreeRTOS, on an ESP32, an MEKF (multiplicative extended Kalman filter) that correctly determines, from LSM6DS33 gyroscope and accelerometer measurements, the angular tilt of the LSM6DS33 embedded on the MinIMU-9 v5 IMU breakout board. Here, the term “angular tilt” refers to a description of angular orientation that includes only the roll and pitch angular degrees of freedom (DoFs), not the yaw DoF, which indicates rotation about the z-axis “down” direction in the body-fixed reference frame.
 
-## Solution Process 
-* Decided on a project architecture with tasks for this, queues for this, and data structures for this. 
-* Implemented, referencing the LSM6DS33 datasheet, the LSM6DS33 driver code that configures the LSM6DS33 for these options and allows for sampling the IMU via the ESP32 I2C bus. 
-* Designed in Autodesk Fusion and 3D printed a leveling tilt stand to calibrate the sensor. 
-* Calibrated the gyroscope.  This is the gyroscope process model. The assumption is that the bias is a vector that evolves according to a random walk. 
-* Assessed the gyroscope noise against the assumed MEKF noise model (zero-mean Gaussian white). To assess Gaussianity I collected X seconds of samples, then plotted histograms of mean-subtracted measurements. The histograms suggest these ideas. The LSP suggests noise is not white. 
-* Determined the initial covariance matrix to use for the propagation model and for the update model, based on empirical data. 
-* Calibrated the accelerometer. This involved a six pose calibration routine. I collected X minutes of samples in each of those poses. The average of each point was taken and used to built an affine best fit model solved with least squares. This is the math model for that.
-* Implemented the prediction step. Implemented supporting math functions. Built embedded logging statements and post-processing scripts to help verify the prediction step. This involved assessing the time evolution of the state estimate covariance matrix. This is the evolution of eigenvalues, etc. 
-* Implemented the update step. Implemented the supporting math functions. Built logging and post-processing steps to assess structural properties of the innovation covariance matrix and estimated quaternion. 
-* 3D printed a validation test fixture in Auto desk fusion that allows for setting at ground-truth tilt orientations. It’s a ball and socket mechanism. Here’s a picture. 
-* Validated that the filter demonstrates expected response to stationary ground-truth poses on the test fixture. The drift around the ground truth is exactly as expected. This is because the gyro-accel model is not a fully observable system. Intuitively, the accelerometer is providing information on how level the sensor is relative to the ground plane. There are an infinite number of orientations that are perfectly level with the ground plane, if its imagined spinning that plane around an axis perpendicular to the plane. Thus, if parameterize the rotation matrix with Euler angles, yaw can be thought of as being unconstrained while roll and pitch are constrained—and that’s what the trajectory plots show. If I were to assemble an observability matrix from the system state matrices across time, the rank would always be less than the state estimation dimension. 
+## Background Note
+Some might think that numerical integration of gyroscope angular rate measurements is sufficient to reconstruct a full 3-DoF angular orientation. But the reality is that, due to the fact that all sensors exhibit some degree of noise corruption, the numerical integration of gyro-measured rates will keep drifting unless corrected. The MEKF provides a framework for implementing such a correction; for this project that corrective action is accelerometer-derived. When not accelerating along any of its translational DoFs, the accelerometer provides an indication of the 2-DoF tilt of the sensor board relative to the plane perpendicular to the gravity direction (the level plane). Even though these accelerometer measurements  themselves are also noisy, the MEKF is able to combine both sensors’ measurements such that the resulting angular orientation estimate, along the observable DoFs (roll and pitch), becomes less drift-prone. 
+Implementation, Verification, and Validation
+I have implemented an MEKF (multiplicative extended Kalman filter) that correctly determines, from LSM6DS33 gyroscope and accelerometer measurements, the angular tilt of the LSM6DS33 embedded on the MinIMU-9 v5 IMU breakout board. 
+
+This is the evidence: 
+Under stationary conditions, the MEKF exhibits the expected estimation behavior. 
+Show the quaternion estimate with no correction
+Show the quaternion estimate with correction 
+Under stationary conditions, all of the MEKF covariance matrices are propagated in a believable and mathematically valid way. 
+Show plots to support the PSD of several matrices under no correction
+Show plots to support the PSD of several matrices under correction
+Under stationary conditions, the filter converges to a reasonable estimate of ground truth tilt. 
+Show that cold-start from -36 degrees converges to -36 degrees
+Show that cold-start from -18 degrees converges to -18 degrees
+Show that cold-start from 0 degrees converges to 0 degrees
+Show that cold-start from 18 degrees converges to 18 degrees
+Show that cold-start from 36 degrees converges to 36 degrees
+Under translational acceleration, the estimate becomes corrupted, which is expected. 
+Show a plot of the estimated attitude during vigorous up/down shaking. 
+
+
+
+I’m also able to explain, in a coherent way, the implementation process–from deciphering the underpinning mathematics and logic of the MEKF, to understanding how the I2C sensor register reads work, to organizing the project for an RTOS, to finally carrying out simple manual tests that confirm the filter achieved its intended purpose.  
+
+Here’s the evidence: 
+Summarize the MEKF mathematical framework I employ and indicate how I employ that mathematics inside of an RTOS program. 
+
+
+Summarize why accelerometer calibration is important and how I calibrated the accelerometer.
+ 
+Summarize my characterization of the gyroscope noise against the MEKF assumption and the reason for doing this.
+
+

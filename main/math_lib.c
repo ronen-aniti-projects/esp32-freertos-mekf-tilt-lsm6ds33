@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "math_lib.h"
 
 const float eye4[4][4] = { {1.0f, 0.0f, 0.0f, 0.0f},
@@ -663,14 +664,14 @@ void calculate_matrix_vector_product_6x3_3x1(const float matrix_in[6][3], const 
     }
 }
 
-void calculate_invert_3x3_matrix(const float input_matrix[3][3], float output_matrix[3][3]){
+bool calculate_invert_3x3_matrix(const float input_matrix[3][3], float output_matrix[3][3]){
     // computes the inverse of a matrix input_matrix
     float det = input_matrix[0][0] * (input_matrix[1][1] * input_matrix[2][2] - input_matrix[2][1] * input_matrix[1][2]) -
                 input_matrix[0][1] * (input_matrix[1][0] * input_matrix[2][2] - input_matrix[1][2] * input_matrix[2][0]) +
                 input_matrix[0][2] * (input_matrix[1][0] * input_matrix[2][1] - input_matrix[1][1] * input_matrix[2][0]);
 
     if (fabs(det) < 1e-9f){
-        return;
+        return true;
     }
 
     float invdet = 1.0f / det;
@@ -684,6 +685,7 @@ void calculate_invert_3x3_matrix(const float input_matrix[3][3], float output_ma
     output_matrix[2][0] = (input_matrix[1][0] * input_matrix[2][1] - input_matrix[2][0] * input_matrix[1][1]) * invdet;
     output_matrix[2][1] = (input_matrix[2][0] * input_matrix[0][1] - input_matrix[0][0] * input_matrix[2][1]) * invdet;
     output_matrix[2][2] = (input_matrix[0][0] * input_matrix[1][1] - input_matrix[1][0] * input_matrix[0][1]) * invdet;
+    return false;
 }
 
 void calculate_transpose_3x6(const float input_matrix_3x6[3][6], float output_matrix_6x3[6][3]){
@@ -811,6 +813,46 @@ void assemble_H_matrix(const float skew_rotated_accel_matrix[3][3], float H_matr
     for (int i = 0; i < 3; ++i){
         for (int j = 0; j < 3; ++j){
             H_matrix[i][j] = skew_rotated_accel_matrix[i][j];
+        }
+    }
+}
+
+void calculate_make_symmetric_6x6(float matrix_6x6[6][6]){
+    
+    float matrix_A[6][6] = {{0.0f}};
+    float matrix_A_transpose[6][6] = {{0.0f}};
+
+    
+    for (int i = 0; i < 6; ++i){
+        for (int j = 0; j < 6; ++j){
+            matrix_A[i][j] = matrix_6x6[i][j];
+            matrix_A_transpose[i][j] = matrix_6x6[j][i];
+        }
+    }
+
+    for (int i = 0; i < 6; ++i){
+        for (int j = 0; j < 6; ++j){
+            matrix_6x6[i][j] = 0.5f * (matrix_A[i][j] + matrix_A_transpose[i][j]); 
+        }
+    }
+}
+
+void calculate_make_symmetric_3x3(float matrix_3x3[3][3]){
+    
+    float matrix_A[3][3] = {{0.0f}};
+    float matrix_A_transpose[3][3] = {{0.0f}};
+
+    
+    for (int i = 0; i < 3; ++i){
+        for (int j = 0; j < 3; ++j){
+            matrix_A[i][j] = matrix_3x3[i][j];
+            matrix_A_transpose[i][j] = matrix_3x3[j][i];
+        }
+    }
+
+    for (int i = 0; i < 3; ++i){
+        for (int j = 0; j < 3; ++j){
+            matrix_3x3[i][j] = 0.5f * (matrix_A[i][j] + matrix_A_transpose[i][j]); 
         }
     }
 }
