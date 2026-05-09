@@ -8,7 +8,8 @@ Implement, under FreeRTOS, on an ESP32, an MEKF (multiplicative extended Kalman 
 
 ## Background Note
 Some might think that numerical integration of gyroscope angular rate measurements is sufficient to reconstruct a full 3-DoF angular orientation. But the reality is that, due to the fact that all sensors exhibit some degree of noise corruption, the numerical integration of gyro-measured rates will keep drifting unless corrected. The MEKF provides a framework for implementing such a correction; for this project that corrective action is accelerometer-derived. When not accelerating along any of its translational DoFs, the accelerometer provides an indication of the 2-DoF tilt of the sensor board relative to the plane perpendicular to the gravity direction (the level plane). Even though these accelerometer measurements  themselves are also noisy, the MEKF is able to combine both sensors’ measurements such that the resulting angular orientation estimate, along the observable DoFs (roll and pitch), becomes less drift-prone. 
-Implementation, Verification, and Validation
+
+## Implementation, Verification, and Validation
 I have implemented an MEKF (multiplicative extended Kalman filter) that correctly determines, from LSM6DS33 gyroscope and accelerometer measurements, the angular tilt of the LSM6DS33 embedded on the MinIMU-9 v5 IMU breakout board. 
 
 This is the evidence: 
