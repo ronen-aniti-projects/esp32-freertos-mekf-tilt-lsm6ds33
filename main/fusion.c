@@ -65,6 +65,9 @@ void fusion_init(fusion_state_t *fusion_state){
     // Initialize fusion timer
     fusion_state->last_t_us = 0;
 
+    // Correction flag requires collecting two IMU samples allowing correction step
+    fusion_state->ready = false;
+
     return;
 }
 
@@ -110,6 +113,7 @@ void fusion_propagate(fusion_state_t *fusion_state, const imu_scaled_sample_t *s
         }
         return;
     }
+
 
     // Compute dt since last sample
     float dt = (float)(scaled_sample->t_us - fusion_state->last_t_us) * 1e-6f; 
@@ -161,6 +165,11 @@ void fusion_propagate(fusion_state_t *fusion_state, const imu_scaled_sample_t *s
     for (int i = 0; i < 3; ++i){
         fusion_state->omega_hat_prev[i] = omega_hat_now[i];
     }
+
+   // Allow for corrections once one complete prop step has occured (two sample start)
+   if (!fusion_state->ready){
+    fusion_state->ready = true;
+   }
     
 }
 
@@ -175,7 +184,9 @@ void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *sca
     // Apply the multiplicative adjustment to the nominal estimate quaternion
     // Apply the correction vector gyro bias to the norminal bias estimate
     // Update q_hat, b_hat, P, omega_hat 
-
+    if (!fusion_state->ready){
+        return;
+    }
 
     // Define some local variables
     float H_matrix[3][6] = {{0.0f}};
@@ -229,7 +240,6 @@ void fusion_correct(fusion_state_t *fusion_state, const imu_scaled_sample_t *sca
     // Record latest accel sample
     float accel_meas[3] = {scaled_sample->ax, scaled_sample->ay, scaled_sample->az};
     
-
     // Compute the rotation matrix global->local estimate for this timestep
     calculate_rotation_matrix_from_quaternion(fusion_state->q_hat, rotation_q_est_matrix);
 

@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 
 plt.style.use("bmh")
-data = np.loadtxt("log/imu_250_3.csv", delimiter=",")
+data = np.loadtxt("log/imu_250_2.csv", delimiter=",")
 t_us = data[:,0]
 dt_us = np.diff(t_us)
 

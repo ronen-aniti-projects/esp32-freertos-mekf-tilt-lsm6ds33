@@ -131,7 +131,7 @@ static void fusion_task(void* pvParameters){
             
 
 
-            count++; 
+            
             if (count % skip == 0){
                 fusion_log_t log = {0};
                 log.t_us = sample.t_us;
@@ -156,6 +156,7 @@ static void fusion_task(void* pvParameters){
 
                 xQueueSend(log_q, &log, 0);
             }
+            count++; 
 
 
 

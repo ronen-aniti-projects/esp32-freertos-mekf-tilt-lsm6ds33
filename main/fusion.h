@@ -1,7 +1,9 @@
 #pragma once 
 
 #include <stdint.h> 
+#include <stdbool.h>
 #include "imu.h"
+
 
 typedef struct {
     float q_hat[4];            
@@ -9,6 +11,7 @@ typedef struct {
     float P[6][6];
     float omega_hat_prev[3];
     int64_t last_t_us; 
+    bool ready;
 
     float debug_S[3][3]; 
     float debug_r[3];
