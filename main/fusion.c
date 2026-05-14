@@ -2,11 +2,11 @@
 #include "math_lib.h"
 
 // Used to construct an initial Q matrix (Q0)
-//static const float ODR = 208.0f;
-//static const float DT_SEC = 1.0f / ODR;
-static const float GYRO_RATE_VARIANCE_X = 5.5886e-4f; //5.5886e-6f * DT_SEC;          // based on emperical stationary gx variance         
-static const float GYRO_RATE_VARIANCE_Y = 4.9785e-4f; //4.9785e-6f * DT_SEC;          // based on emperical stationary gy variance
-static const float GYRO_RATE_VARIANCE_Z = 1.7574e-4f; //1.7574e-6f * DT_SEC;          // based on emperical stationary gz variance
+static const float ODR = 208.0f;
+static const float DT_SEC = 1.0f / ODR;
+static const float GYRO_RATE_VARIANCE_X = 5.5886e-6f * DT_SEC;   //5.5886e-4f; //5.5886e-6f * DT_SEC;          // based on emperical stationary gx variance         
+static const float GYRO_RATE_VARIANCE_Y = 4.9785e-6f * DT_SEC;     //4.9785e-4f; //4.9785e-6f * DT_SEC;          // based on emperical stationary gy variance
+static const float GYRO_RATE_VARIANCE_Z = 1.7574e-6f * DT_SEC; //1.7574e-4f; //1.7574e-6f * DT_SEC;          // based on emperical stationary gz variance
 static const float GYRO_RATE_VARIANCE = 
     (GYRO_RATE_VARIANCE_X + GYRO_RATE_VARIANCE_Y + GYRO_RATE_VARIANCE_Z) / 3.0;  // Trawney MEKF assumes isotropic noise 
 static const float GYRO_BIAS_WALK_VARIANCE = GYRO_RATE_VARIANCE * 1e-3f;           // guess - not based on emperical data

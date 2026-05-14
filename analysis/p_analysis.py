@@ -6,7 +6,7 @@ plt.style.use("bmh")
 rows = []
 expected_cols = 92 #44
 
-with open("level_corr.csv") as f:
+with open("log/translational.csv") as f:
     for line in f:
         parts = [x.strip() for x in line.split(",")]
         if len(parts) != expected_cols:

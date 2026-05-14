@@ -6,7 +6,7 @@ plt.style.use("bmh")
 rows = []
 expected_cols = 92 #44
 
-with open("n18deg.csv") as f:
+with open("log/tuned.csv") as f:
     for line in f:
         parts = [x.strip() for x in line.split(",")]
         if len(parts) != expected_cols:

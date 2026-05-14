@@ -16,24 +16,24 @@ I have implemented an MEKF (multiplicative extended Kalman filter) that correctl
 
 I’ve rooted my implementation in the conceptual framework established by Nikolas Trawny and Stergios I. Roumeliotis in their 2005 University of Minnesota technical report titled Indirect Kalman Filter for 3D Attitude Estimation. After studying the paper, I’ve learned that the MEKF really has two state vectors: one for tracking the “nominal” state, and one for tracking an “error” state local to the current estimate. The nominal state tracks the big-picture quantities we care about: (i) the unit-quaternion mapping the world frame into the sensor frame, and (ii) the gyroscope rate biases. However, due to the fact that the set of all unit-quaternions is not a vector space, many of the incremental filter computations occur within a localized “tangent space”--a sort of derivative space–taken at the nominal estimate. The error state is a vector within this tangent space and essentially provides an estimate of the displacement between the current nominal estimate’s quaternion and bias and the true quaternion and biases. To resemble that quaternion delta, since unit-quaternions are off-limits, the filter math employs rotation vector representation, a sort of axis-angle representation having magnitude equal to the rotation angle and components pointing in the direction of the rotation axis.  
 
-
+![State Vector](/docs/report_figures/state_vector.png)
 
 I’ve learned that the Trawny and Roumeliotis MEKF framework comprises two primary algorithmic steps: prediction and correction. These steps work together to update not only the nominal estimate but also the uncertainty regarding the estimate of the error state. In MEKF-predict, the estimate is propagated forward based only on the latest gyroscope measurement. In MEKF-correct, the estimate is corrected based only on the latest accelerometer measurement. 
 
 This is the core math underpinning the MEKF-predict step. Key components include integrating the nominal quaternion forward in time based on the latest gyroscope reading and propagating the state covariance forward based on the assumed gyroscope noise density and the time since previous gyroscope measurement.
 
-
+![Prediction Step](docs/report_figures/prediction_step.png)
 
 
 Likewise, this is the core math underpinning the MEKF-correct. The key components include computation of the measurement Jacobian, of the measurement residual, of the Kalman gain, of the correction vector, of the quaternion multiplicative update, or the gyroscope bias additive update, of the bias-compensated gyroscope estimate, and of the covariance update. 
 
-
+![Correction Step](docs/report_figures/correct_step.png)
 
 Notably, I’ve implemented all of this math in C code (in math_lib.c/.h and fusion.h/.c), leveraging floating point arrays to represent matrices and vectors. 
 
 With regards to how I’ve organized this project, the MEKF implementation and sensor driver codes are structured as an ESP-IDF project that is compiled on my PC and flashed onto the ESP32, while the analysis scripts, which I used for debugging, verification, and validation, are Python scripts that live on my PC. On the firmware side, I have modules that address IMU interfacing, MEKF logic, mathematics helpers, and main driver code. On the analysis, verification, and validation side, I have Python scripts for timing jitter analysis, accelerometer calibration, gyroscope noise analysis, and MEKF intermediate results analysis. The following diagram illustrates the project’s architecture. 
 
-
+![Architecture](docs/report_figures/architecture.png)
 
 In essence, main.c imports the functionality of lsm_driver.c, MEKF.c, and math_library.c to drive three tasks: one handles IMU polling, one handles MEKF computation, and one handles UART logging. This code lives on the ESP32. The ESP32 is wired to the LSM6DS33 via I2C enabled pins. The ESP32 is also connected to the PC via a UART-USB bridge. When the ESP32 boots, it configures the LSM6DS33 to a 208 Hz accel and gyro ODR, a ±245 dps gyro FSR, and a ± 2g FSR, by writing to control registers 16, 17, and 18 respectively.  Following configuring the IMU, main.c starts the three RTOS tasks. IMU Polling Task has a period of 1 ms. Every period, it will check for a new gyro and accel measurement, then, if one is ready, it will package the measurement as a custom imu_scaled_sample_t and pass it to MEKF task via IMU Sample Queue. When MEKF task receives data on IMU Sample Queue, it immediately processes it according to the MEKF algorithm. Following the computation, MEKF Task will package the processed data as a custom fusion_log_t and pass that to UART Logging Task via Logging Queue. UART Logging Task allows for CSV-type logging of intermediate MEKF calculations, which played a key role in the implementation, verification, and validation of this project. 
 
@@ -43,7 +43,8 @@ Because I chose to implement, for capturing IMU measurements, a polling scheme r
 
 Part of my IMU-polling verification process involved an analysis of the IMU sample interval timing distribution. Having set the sensor ODR to 208 Hz (4.8 ms period) and the IMU Polling Task to 250 Hz (4 ms period), and having implemented polling logic that waits a full period if IMU data is not ready, I expected successive IMU measurements to be spaced either 4 ms or 8 ms apart. To test my hypothesis, I implemented code in firmware to log several thousand successive IMU samples, then I plotted the time deltas as a histogram. The results confirm my hypothesis. When I repeated a similar logging experiment but changed the IMU Polling Task period to 1 ms, IMU samples were spaced either 4 ms or 5 ms apart, a result conforming to that same idea. 
 
-
+![Timing Interval 1](docs/report_figures/timing_interval_4k.png)
+![Timing Interval 2](docs/report_figures/timing_interval_1k.png)
 
 In developing this project, I dedicated care to calibrating the LSM6DS33’s accelerometer, for the reason that an accurate accelerometer measurement is directly tied to the MEKF-correct step being logically consistent. The actual calibration process involved designing and 3D printing a custom calibration fixture, selecting a calibration math model, collecting accelerometer data in various poses, formulating a least-squares regression problem, solving for the unknown parameters of the least-squares problem, and finally implementing the results in firmware. 
 
