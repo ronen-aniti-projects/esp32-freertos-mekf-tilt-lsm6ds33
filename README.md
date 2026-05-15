@@ -1,149 +1,221 @@
-# First-Principles Implementation/Validation of Embedded Inertial MEKF for Tilt Estimation on ESP32 under FreeRTOS 
-
-## Learning Objective
-My learning objective is to demonstrate (i) that I’m able to implement, from first-principles, in firmware, under FreeRTOS, on an ESP32, a multiplicative extended Kalman filter (MEKF) that correctly estimates the angular tilt of an LSM6DS33 6-axis MEMS gyroscope-accelerometer IMU, embedded on a MinIMU-9 v5 IMU breakout board, (ii) that I’m able to explain, in a coherent way, the implementation process–from deciphering the underpinning mathematics and logic of the MEKF, to understanding how the I2C sensor register reads work, to organizing the project for an RTOS, to finally carrying out simple manual tests that confirm the filter achieved its intended purpose. 
+# First-Principles Implementation and Validation of an Embedded Inertial MEKF for Tilt Estimation on ESP32 under FreeRTOS
 
 ## Acknowledgement
-I’d like to thank Steven Mitchell of the Maryland Robotics Center at University of Maryland, College Park, for his guidance and mentorship during the development of this project. 
-Technical Problem Statement
-Implement, under FreeRTOS, on an ESP32, an MEKF (multiplicative extended Kalman filter) that correctly determines, from LSM6DS33 gyroscope and accelerometer measurements, the angular tilt of the LSM6DS33 embedded on the MinIMU-9 v5 IMU breakout board. Here, the term “angular tilt” refers to a description of angular orientation that includes only the roll and pitch angular degrees of freedom (DoFs), not the yaw DoF, which indicates rotation about the z-axis “down” direction in the body-fixed reference frame.
+I would like to thank Steven Mitchell of the Maryland Robotics Center at the University of Maryland, College Park, for his guidance and mentorship during the development of this project.
 
-## Contextual Note
-Some might think that numerical integration of gyroscope angular rate measurements is sufficient to reconstruct a full 3-DoF angular orientation. However, due to the fact that all sensors exhibit some degree of noise corruption, the numerical integration of gyro-measured rates will keep drifting unless corrected. The MEKF provides a framework for implementing such a correction; for this project that corrective action is accelerometer-derived. When not accelerating along any of its translational DoFs, the accelerometer provides an indication of the 2-DoF tilt of the sensor board relative to the plane perpendicular to the gravity direction (the level plane). Even though these accelerometer measurements  themselves are also noisy, the MEKF is able to combine both sensors’ measurements such that the resulting angular orientation estimate, along the observable DoFs (roll and pitch), becomes less drift-prone. 
+## Abstract
+This project implemented and validated a first-principles multiplicative extended Kalman filter (MEKF) for embedded tilt estimation using an LSM6DS33 six-axis gyroscope-accelerometer IMU on a MinIMU-9 v5 breakout board. The filter was implemented in C on an ESP32 under FreeRTOS, with custom firmware modules for IMU register-level interfacing, real-time task scheduling, quaternion-based attitude estimation, covariance propagation, UART logging, and offline Python-based verification. Validation results support that the MEKF correctly estimates roll/pitch tilt, suppresses gyro-integration drift through accelerometer correction, preserves the expected covariance structure, converges to known fixture angles within small mounting error, and degrades in the expected way when the accelerometer’s gravity-only assumption is violated.
 
-## Implementation, Verification, and Validation
-I have implemented an MEKF (multiplicative extended Kalman filter) that correctly estimates, from LSM6DS33 gyroscope and accelerometer measurements, the angular tilt of the LSM6DS33 embedded on the MinIMU-9 v5 IMU breakout board. I’m also able to explain, in a coherent way, the implementation process–from deciphering the underpinning mathematics and logic of the MEKF, to understanding how the I2C sensor register reads work, to organizing the project for an RTOS, to finally carrying out simple manual tests that confirm the filter achieved its intended purpose. 
+## 1. Technical Objective
 
-I’ve rooted my implementation in the conceptual framework established by Nikolas Trawny and Stergios I. Roumeliotis in their 2005 University of Minnesota technical report titled Indirect Kalman Filter for 3D Attitude Estimation. After studying the paper, I’ve learned that the MEKF really has two state vectors: one for tracking the “nominal” state, and one for tracking an “error” state local to the current estimate. The nominal state tracks the big-picture quantities we care about: (i) the unit-quaternion mapping the world frame into the sensor frame, and (ii) the gyroscope rate biases. However, due to the fact that the set of all unit-quaternions is not a vector space, many of the incremental filter computations occur within a localized “tangent space”--a sort of derivative space–taken at the nominal estimate. The error state is a vector within this tangent space and essentially provides an estimate of the displacement between the current nominal estimate’s quaternion and bias and the true quaternion and biases. To resemble that quaternion delta, since unit-quaternions are off-limits, the filter math employs rotation vector representation, a sort of axis-angle representation having magnitude equal to the rotation angle and components pointing in the direction of the rotation axis.  
+The objective of this project was to implement, from first principles, an embedded multiplicative extended Kalman filter capable of estimating the angular tilt of an LSM6DS33 IMU using gyroscope and accelerometer measurements. The target platform was an ESP32 running FreeRTOS, with the IMU connected over I2C and logged data transmitted to a PC over UART.
+In this project, tilt refers to the observable roll and pitch components of the sensor board’s attitude relative to gravity. Yaw is not directly observable from a gyroscope-accelerometer sensor pair alone because the accelerometer provides a gravity-direction reference but does not constrain rotation about the gravity direction.
+The project was intended to demonstrate the complete engineering chain required to move from estimation theory to embedded implementation and physical validation:
 
-![State Vector](/docs/report_figures/state_vector.png)
+* interpreting the MEKF mathematical structure;
+* implementing quaternion, matrix, and covariance operations in C;
+* writing a register-level IMU driver;
+* organizing the firmware under FreeRTOS;
+* calibrating the accelerometer;
+* characterizing timing and sensor noise behavior;
+* validating the estimator using known-angle physical fixtures;
+* testing the estimator under a known model-assumption violation.
 
-I’ve learned that the Trawny and Roumeliotis MEKF framework comprises two primary algorithmic steps: prediction and correction. These steps work together to update not only the nominal estimate but also the uncertainty regarding the estimate of the error state. In MEKF-predict, the estimate is propagated forward based only on the latest gyroscope measurement. In MEKF-correct, the estimate is corrected based only on the latest accelerometer measurement. 
 
-This is the core math underpinning the MEKF-predict step. Key components include integrating the nominal quaternion forward in time based on the latest gyroscope reading and propagating the state covariance forward based on the assumed gyroscope noise density and the time since previous gyroscope measurement.
+## 2. Background and Estimation Problem 
 
-![Prediction Step](docs/report_figures/prediction_step.png)
+A gyroscope measures angular rate. In principle, integrating gyroscope measurements over time can reconstruct orientation. In practice, all gyroscopes exhibit bias and noise, so direct integration accumulates error and causes the estimated attitude to drift.
 
+An accelerometer provides a useful correction signal when the sensor is not undergoing significant translational acceleration. Under static or quasi-static conditions, the accelerometer primarily measures the direction of gravity. That gravity-direction measurement constrains roll and pitch, but not yaw. Therefore, a gyroscope-accelerometer MEKF can estimate tilt robustly, while yaw remains unobservable without an additional reference such as a magnetometer, camera, or external heading measurement.
 
-Likewise, this is the core math underpinning the MEKF-correct. The key components include computation of the measurement Jacobian, of the measurement residual, of the Kalman gain, of the correction vector, of the quaternion multiplicative update, or the gyroscope bias additive update, of the bias-compensated gyroscope estimate, and of the covariance update. 
+The implemented MEKF follows the indirect attitude-filter structure described by Trawny and Roumeliotis in their 2005 University of Minnesota technical report, Indirect Kalman Filter for 3D Attitude Estimation. The filter maintains two related states:
 
-![Correction Step](docs/report_figures/correct_step.png)
+1. a _nominal state_, containing the unit quaternion attitude estimate and gyroscope bias estimate;
+2. an _error state_, containing a local small-angle attitude error and gyroscope bias error.
 
-Notably, I’ve implemented all of this math in C code (in math_lib.c/.h and fusion.h/.c), leveraging floating point arrays to represent matrices and vectors. 
+This separation is necessary because unit quaternions do not form a vector space. The filter therefore performs additive Kalman filter updates in the local tangent-space error representation, then applies the resulting attitude correction multiplicatively to the nominal quaternion.
 
-With regards to how I’ve organized this project, the MEKF implementation and sensor driver codes are structured as an ESP-IDF project that is compiled on my PC and flashed onto the ESP32, while the analysis scripts, which I used for debugging, verification, and validation, are Python scripts that live on my PC. On the firmware side, I have modules that address IMU interfacing, MEKF logic, mathematics helpers, and main driver code. On the analysis, verification, and validation side, I have Python scripts for timing jitter analysis, accelerometer calibration, gyroscope noise analysis, and MEKF intermediate results analysis. The following diagram illustrates the project’s architecture. 
+![State Vector](docs/report_figures/state_vector.png)
 
-![Architecture](docs/report_figures/architecture.png)
 
-In essence, main.c imports the functionality of lsm_driver.c, MEKF.c, and math_library.c to drive three tasks: one handles IMU polling, one handles MEKF computation, and one handles UART logging. This code lives on the ESP32. The ESP32 is wired to the LSM6DS33 via I2C enabled pins. The ESP32 is also connected to the PC via a UART-USB bridge. When the ESP32 boots, it configures the LSM6DS33 to a 208 Hz accel and gyro ODR, a ±245 dps gyro FSR, and a ± 2g FSR, by writing to control registers 16, 17, and 18 respectively.  Following configuring the IMU, main.c starts the three RTOS tasks. IMU Polling Task has a period of 1 ms. Every period, it will check for a new gyro and accel measurement, then, if one is ready, it will package the measurement as a custom imu_scaled_sample_t and pass it to MEKF task via IMU Sample Queue. When MEKF task receives data on IMU Sample Queue, it immediately processes it according to the MEKF algorithm. Following the computation, MEKF Task will package the processed data as a custom fusion_log_t and pass that to UART Logging Task via Logging Queue. UART Logging Task allows for CSV-type logging of intermediate MEKF calculations, which played a key role in the implementation, verification, and validation of this project. 
+## System Architecture
+The project was implemented as an ESP-IDF firmware application running on an ESP32, with a separate set of Python scripts used on the host PC for debugging, verification, and validation. 
 
-Because I opted to implement a sensor driver from scratch, I had to learn how to interpret the raw LSM6DS33 data register bits into physical units. The sensor datasheet indicates that registers 34 (0x22) to 45 (0x2D) contain the gyroscope and accelerometer output measurements. For this register interval, two registers together encode the measurement along one axis of either the gyro or the accel. For any pair of registers encoding the measurement along one sensor axis, the eight bits of the first register indicate the least significant byte of the measurement, while the eight bits of the next register indicate the most significant byte of the same measurement (an idea called “little-endian”). The datasheet indicates that each of these 16-bit words encodes a signed value (“two’s complement”), which needs to further be scaled to physical units by a scale factor provided in the datasheet specific to the configured sensor FSR (“sensitivity scaling”). In my driver code, I consider all of these specifications, leveraging  uint8_t for a 12-byte all-data buffer, int16_t for interpreting bytes into two’s complement words, and preprocessor macro constants for scale factors. 
+On the embedded side, the firmware was divided into three main modules. The IMU driver, `lsm_driver.c`, handled LSM6DS33 configuration, register-level I2C reads, raw-byte interpretation, unit scaling, timestamping, and accelerometer calibration. The filter module, `MEKF.c`, implemented the prediction and correction steps of the multiplicative extended Kalman filter. The supporting math module, `math_lib.c`, provided the matrix, vector, quaternion, and normalization routines needed by the estimator.
 
-Because I chose to implement, for capturing IMU measurements, a polling scheme rather than a FIFO-based interrupt scheme, I placed special emphasis on ensuring my sensor driver never retrieve the same measurement twice. First, IMU Polling Task invokes the driver’s lsm6ds_read_scaled_sample(). The driver invokes lsm6ds33_data_ready(), which reads IMU Register 30, bits 0 and 1, which indicate whether the gyro and accel measurements contained in data registers are fresh. If both bits are set, the driver proceeds to extract the measurements with a burst read of the accelerometer and gyroscope data registers, Register 34 (0x22) to Register 45 (0x2D). The IMU driver invokes esp_timer_get_time() to assign a timestamp to the measurement at the time of retrieval. 
+At runtime, these modules were coordinated through three FreeRTOS tasks. The IMU polling task periodically checked the LSM6DS33 data-ready status, read fresh gyroscope and accelerometer samples when available, timestamped each measurement, and passed the scaled sample to the estimator through a FreeRTOS queue. The MEKF task consumed these IMU samples, ran the filter prediction and correction logic, and packaged both the final attitude estimate and selected intermediate values for logging. A separate UART logging task then streamed this diagnostic data to the host PC in a CSV-style format for offline analysis.
 
-Part of my IMU-polling verification process involved an analysis of the IMU sample interval timing distribution. Having set the sensor ODR to 208 Hz (4.8 ms period) and the IMU Polling Task to 250 Hz (4 ms period), and having implemented polling logic that waits a full period if IMU data is not ready, I expected successive IMU measurements to be spaced either 4 ms or 8 ms apart. To test my hypothesis, I implemented code in firmware to log several thousand successive IMU samples, then I plotted the time deltas as a histogram. The results confirm my hypothesis. When I repeated a similar logging experiment but changed the IMU Polling Task period to 1 ms, IMU samples were spaced either 4 ms or 5 ms apart, a result conforming to that same idea. 
+During initialization, the ESP32 configured the LSM6DS33 for a 208 Hz accelerometer and gyroscope output data rate, a ±245 dps gyroscope full-scale range, and a ±2 g accelerometer full-scale range. The ESP32 communicated with the IMU over I2C and transmitted logged estimator data to the PC through a UART-USB bridge.
 
-![Timing Interval 1](docs/report_figures/timing_interval_4k.png)
-![Timing Interval 2](docs/report_figures/timing_interval_1k.png)
 
-In developing this project, I dedicated care to calibrating the LSM6DS33’s accelerometer, for the reason that an accurate accelerometer measurement is directly tied to the MEKF-correct step being logically consistent. The actual calibration process involved designing and 3D printing a custom calibration fixture, selecting a calibration math model, collecting accelerometer data in various poses, formulating a least-squares regression problem, solving for the unknown parameters of the least-squares problem, and finally implementing the results in firmware. 
+![System Architecture](docs/report_figures/architecture.png)
 
-The math model I decided on was a mapping of true acceleration to measured acceleration. If we think of acceleration as a vector, then geometrically, the measured acceleration is assumed to be equal to the true acceleration, but only after the true acceleration is scaled/sheared/rotated then translated. The A matrix and the b vector are assumed to be the unknown constants of the model. 
 
+## Sensor Driver Implementation
+The LSM6DS33 outputs gyroscope and accelerometer measurements as signed 16-bit values distributed across consecutive output registers. Registers `0x22` through `0x2D` contain the gyroscope and accelerometer output data. Each axis measurement is encoded using two registers: the lower-address register contains the least significant byte, and the next register contains the most significant byte. This is a little-endian layout.
 
+The driver interprets each two-byte pair as a signed two’s-complement `int16_t` value, then converts it into physical units using the sensitivity scale factors corresponding to the configured full-scale ranges. The driver uses a 12-byte burst read to acquire all accelerometer and gyroscope axis measurements in one transaction.
 
-The calibration fixture I designed featured a ball and socket joint and a cube-shaped top that allowed mounting of the sensor board in mutually orthogonal directions. The bubble level helped ensure that each pose was perpendicular to the gravity direction. 
+Because the project used a polling-based acquisition scheme rather than FIFO or interrupt-driven sampling, the driver explicitly checked the sensor data-ready status before reading output registers. The polling task invoked a data-ready check, verified that both accelerometer and gyroscope samples were fresh, read the output data, and timestamped the sample using `esp_timer_get_time()`.
 
+## Timing Verification
+A key implementation risk in polling-based sensor acquisition is accidentally reading stale data or introducing irregular sample timing. To verify the sampling behavior, the firmware logged thousands of consecutive IMU samples, and the resulting sample-to-sample time intervals were plotted as histograms in Python.
 
+With the IMU output data rate set to 208 Hz, the nominal sensor period is approximately 4.8 ms. When the polling task was configured with a 4 ms period, the expected behavior was that some samples would be acquired after one polling period and some after two polling periods, producing intervals clustered near 4 ms and 8 ms. The observed timing distribution matched this expectation.
 
+When the polling task period was reduced to 1 ms, the observed sample intervals clustered near 4 ms and 5 ms, again consistent with a 208 Hz sensor output rate being observed through a faster polling loop. This supported that the driver was reading fresh measurements rather than repeatedly retrieving the same stale register contents.
 
+![Timing Interval 1k and 4k](docs/report_figures/imu_sample_interval_distribution.png)
 
+## Accelerometer Calibration
 
+Accelerometer calibration was required because the MEKF correction step relies on accelerometer measurements to provide a physically meaningful gravity-direction reference. A biased or mis-scaled accelerometer would directly corrupt the measurement update.
 
+The calibration model treated the measured acceleration vector as an affine transformation of the true acceleration vector. In this model, the measurement is related to the true acceleration through a 3-by-3 matrix and a 3-by-1 bias vector. The matrix captures scale, axis coupling, and misalignment effects, while the bias vector captures constant offsets.
 
+![Calibration Model](docs/report_figures/calibration_model.png)
 
+To support calibration, a custom fixture was designed in Autodesk Fusion and printed on a Bambu Labs A1 Mini. The fixture used a ball-and-socket joint and a cube-shaped top that allowed the sensor board to be placed in six mutually orthogonal orientations. A bubble level helped align each pose with the gravity direction.
 
+![Accelerometer Calibration Summary](docs/report_figures/accel_calibration_summary.png)
 
+For each of the six calibration poses, approximately 90 seconds of accelerometer data were collected and averaged. These six poses produced 18 scalar equations: three accelerometer axes for each of six orientations. The unknown calibration parameters consisted of the nine entries of the calibration matrix and the three entries of the bias vector, giving 12 unknowns total. The resulting overdetermined system was solved using least-squares regression.
 
+![Calibration Least Squares Formulation](docs/report_figures/calibration_least_squares.png)
 
+The estimated calibration matrix was close to identity, and the estimated bias vector was small but non-negligible. This was consistent with a plausible accelerometer calibration result. The resulting calibration transform was then implemented directly in the firmware sensor driver.
 
-To solve for the unknown calibration constants, I formulated an over-determined system of 18 linear equations in 12 unknowns. The 18 equations came from the fact that I considered six poses and from the fact that the accelerometer measures acceleration along three axes. For each pose, a different face of the sensor board is positioned perpendicular to the gravity direction. For example, for one pose, the accelerometer’s +Z face is positioned so that it’s aligned as closely as possible with the gravity down direction. For each pose, I collected approximately 90 seconds of accelerometer measurements, then averaged the measurement along each axis. With those averaged measurements, I constructed the LHS of the system. To construct the RHS, I assembled a matrix-vector product representing how the calibration parameters would transform the expected gravity measurement along each axis in each of the six poses. After I assembled the system, I solved it with least-squares regression. The results seemed believable: an A matrix close to I and a small but not negligible b vector.  So I then implemented the calibration math in lsm_driver.c’s calibrate_accel(). 
+![Calibration Parameters](docs/report_figures/calibration_parameters.png)
 
+![Calibration Reprojection](docs/report_figures/accel_calibration_reprojection.png)
 
+## 7. Gyroscope Noise Characterization 
+Kalman filtering assumes stochastic process and measurement noise models. For this project, a stationary gyroscope dataset was collected to examine whether the measured gyroscope behavior was reasonably consistent with the zero-mean Gaussian white-noise assumptions used in the filter design.
 
+![Gyro Noise Model](docs/report_figures/gyro_noise_model.png)
 
+First, several minutes of gyroscope data were collected while the sensor board was held motionless. The sample means were removed, and histograms of the resulting zero-centered measurements were plotted. These distributions appeared approximately bell-shaped and centered near zero, supporting the use of a zero-mean Gaussian approximation for the random component of the gyroscope measurements.
 
+![Gyro Residuals](docs/report_figures/gyro_residuals.png)
 
+Second, the frequency content of the same mean-subtracted signals was examined. Because the logged IMU samples were not perfectly uniformly spaced in time, a Lomb-Scargle periodogram was used instead of a standard fast Fourier transform. The periodograms showed several peaks, indicating that the measured signal did not behave as purely white noise. These peaks may reflect environmental vibration, electromagnetic interference, mechanical coupling, or other external effects rather than the intrinsic gyroscope noise alone.
 
+![Process Noise Spectrum](docs/report_figures/process_noise_spectrum.png)
 
+This analysis helped clarify that the process-noise model is an engineering approximation rather than a perfect description of all measured dynamics.
 
 
+## MEKF Implementation
 
+The MEKF implementation consisted of prediction and correction stages.
 
+During prediction, the filter propagated the nominal quaternion using the latest bias-compensated gyroscope measurement. It also propagated the error-state covariance using the linearized error dynamics and the assumed process-noise model.
 
+![MEKF Prediction Math](docs/report_figures/prediction_step.png)
 
+During correction, the filter used the accelerometer measurement as a gravity-direction observation. The correction step computed the expected accelerometer measurement from the current attitude estimate, formed the measurement residual, evaluated the measurement Jacobian, computed the Kalman gain, generated the small-angle error-state correction, applied the quaternion update multiplicatively, updated the gyroscope bias estimate additively, and updated the error-state covariance.
 
-An extremely important notion in Kalman filtering is that both process and measurement noise are assumed to be zero-mean Gaussian white. Regarding the definition of these terms, zero-mean Gaussian means that a distribution is centered at zero, looks bell-shaped and is symmetric. White noise refers to the idea that the expected value of any element of the outer product formed from the two samples is only nonzero when the samples are taken at the same moment in time. Process noise refers to the noise term appended to the state equations, while measurement noise refers to the noise term appended to the measurement equations. The following set of equations summarizes the process noise model explained in Trawny and Roumeliotis’s paper. It’s a model that I studied extensively while developing my MEKF.  
+![MEKF Correction Math](docs/report_figures/correct_step.png)
 
+A significant portion of the project involved implementing the supporting numerical operations in C. The custom math library included matrix-vector multiplication, matrix-matrix multiplication, matrix exponential approximation, skew-symmetric cross-product matrix operations, matrix assembly utilities, first-order quaternion integration, quaternion multiplication, quaternion-to-rotation-matrix conversion, vector normalization, and quaternion normalization.
 
+## 9. Physical Test Fixtures
 
+Two physical fixtures were designed and printed: a calibration fixture and a known-angle validation fixture. Both used ball-and-socket mechanisms and M4 fasteners for leveling. The calibration fixture used a cube-shaped top for six-pose accelerometer calibration. The validation fixture used a rectangular sensor mounting bed and a spherical pattern of shallow 2 mm holes spaced approximately 18 degrees apart.
 
+![Fixtures](docs/report_figures/fixtures.png)
 
-In implementing my project, I decided to characterize the noise generated by the gyroscope against this zero-mean Gaussian assumption. Initially, I was thinking that MEKF process noise is gyroscope noise; however, as I collected data, I changed my thinking once I considered that physical vibrations and other electromagnetic interference patterns were likely being picked up by the gyroscope. 
+The validation fixture made it possible to place the sensor board at repeatable approximate tilt angles, including 0 degrees, 18 degrees, and 36 degrees. The ball-and-socket interface was designed as a contact-fit joint so that the top fixture component would hold position under its own weight but could still be manually adjusted.
 
-In one test, I collected several minutes of gyroscope measurements with the sensor board strapped motionless, then plotted the mean-subtracted distributions, which suggest that the process noise does reasonably conform to the zero-mean Gaussian assumption. 
+This fixture allowed the filter output to be compared against physical reference angles rather than only against qualitative expectations.
 
+## 10. Validation Tests and Results
+### 10.1 Drift Behavior at 0 Degrees
+The first validation test placed the sensor board at approximately 0 degrees tilt and logged the attitude estimate over roughly five minutes. Two cases were compared:
 
+1. MEKF correction disabled;
+2. MEKF correction enabled.
 
-With that same dataset, I plotted the power spectra of the mean-subtracted time-series since white noise has a flat power spectrum. To do this, I constructed, in Python/Numpy, a Lomb-Scargle periodogram from the same mean-subtracted time series. I used the Lomb-Scargle periodogram (LSP)  instead of the fast Fourier transform (FFT) because the LSP extracts frequency content from time-series data having variable inter-sample timing, whereas the FFT assumes uniform inter-sample timing. The presence of several peaks on the resulting diagrams, even if caused by external vibrations and not generated by the gyroscope itself, is suggestive that the process noise does not exactly conform to a white noise model. 
+With correction disabled, the filter reduced to gyroscope propagation, so attitude drift was expected in all three angular degrees of freedom. The logged attitude trajectory showed full 3D drift, consistent with noise-affected gyro integration.
 
+With correction enabled, the accelerometer constrained roll and pitch through the gravity-direction measurement. The resulting attitude trajectory showed that drift was substantially suppressed in tilt, while yaw drift remained. This was the expected result because yaw is not observable from gravity alone.
 
+![Prediction-Only vs Corrected Drift of Rotation Matrix](docs/report_figures/predicted_and_corrected_drift.png)
 
 
+The tilt-angle trajectory also supported the same conclusion. With correction disabled, the estimated tilt drifted. With correction enabled, the estimated tilt remained near 0 degrees, within a small margin attributable to mounting and fixture alignment error.
 
-During the course of this project, I designed both a calibration fixture and a test fixture in Autodesk Fusion and printed both on a Bambu Labs A1 mini 3D printer. The design of both fixtures was similar, with both featuring a ball-and-socket joint for achieving arbitrary tilt angles and featuring M4 fasteners to achieve gravity-perpendicular leveling of their bottom parts. The calibration fixture’s top part features a cube-shaped structure that allows for mounting of the sensor board into the six mutually-orthogonal directions. The test fixture’s top part has a rectangular mounting bed for the sensor board. The test fixture’s socket component features shallow 2 mm circular holes spaced 18 degrees apart in a spherical pattern. This allows for mounting the test fixture’s top part to known tilt angles, an idea I leveraged when I validated that the MEKF tilt estimate settled at ground-truth values. I designed the interface between the ball-and-socket to be what I learned is called a “contact-fit” interface, meaning that the joint doesn’t simply collapse under its own weight–it requires manual adjustment to change angular position. The following pictures show screenshots from the design and printing process of the two fixtures. 
+![Predicted vs. Corrected Tilt at 0 Degrees](docs/report_figures/predicted_and_corrected_tilt_of_rotation_matrix.png)
 
+### 10.2 Covariance Trace Behavior
+A second validation test examined the time evolution of the error-state covariance trace. The covariance trace is the sum of the variances of the error-state elements, so it provides a scalar indication of total estimated uncertainty.
 
+With correction disabled, the covariance trace grew over time, as expected for gyro-only propagation. With correction enabled, the measurement update reduced the state uncertainty, and the covariance trace remained bounded relative to the propagation-only case.
 
+![Prediction vs. Correction Covariance Trace](docs/report_figures/prediction_vs_correction_covariance_trace.png)
 
+This result supported that the correction step was not only changing the attitude estimate, but also reducing the filter’s internal uncertainty in the expected way.
 
-The most telling portion of the validation process of my implementation involved a series of tests I designed whereby I positioned the sensor board on the test fixture at 0 deg, 18 deg, and 36 deg tilt, then assessed logged data against expectations. 
+### 10.3 Covariance Symmetry and Definiteness
+A third validation test examined whether the MEKF preserved the expected mathematical structure of the covariance matrices it recursively updated. In theory, all covariance matrices should remain symmetric. The error-state covariance matrix and discretized process-noise covariance matrix should also remain positive semi-definite, while the innovation covariance matrix should remain positive definite.
 
-The first test involved positioning the sensor board at 0 tilt, then inspecting the drift pattern, over approximately five minutes, of the estimated sensor-board reference frame and of the estimated tilt angle. To visualize the drifting reference frame, I converted the logged quaternion time evolution into a rotation matrix time evolution to form a sort of 3D reference frame trajectory plot. To visualize the tilt angle evolution, I simply plotted the tilt-angle time evolution, where the tilt angle is the computed angle between the body-fixed z-axis of the sensor frame (third column of the sensor board rotation matrix) and the gravity down direction in the inertial frame. 
+To test this, covariance matrices were logged for over 100 seconds under both correction-disabled and correction-enabled conditions while the sensor board remained stationary and level. Offline analysis checked eigenvalue behavior over time and quantified symmetry preservation using the relative Frobenius-norm symmetry error, where values near zero indicate that the asymmetric component of the matrix is small relative to the overall matrix magnitude.
 
-And I conducted two versions of this 0 degree tilt test. For the first version, I disabled the MEKF-correct step and assessed the drift. For the second version, I ran the full MEKF algorithm. The results I determined supported my expectations. For the case of MEKF-correct-disabled, the 3D sensor frame trajectory supports that sensor frame drift occurs in all three angular DoFs. The MEKF-predict step integrates noise-affected gyro angular rates to form an updated nominal quaternion. So this full-DoF drift is expected. For the case of MEKF-correct, the results support that sensor frame drift occurs in only the yaw DoF–defined as the rotational DoF about the sensor-frame body-z axis. This is exactly what the 3D plot shows. 
+![Eigenvalue Evolution of P in Predict-Only vs. Full MEKF](docs/report_figures/eigs_of_P.png)
 
+![Symmetry Error of P in Predict-Only vs. Full MEKF](docs/report_figures/symmetry_error_of_P.png)
 
+![Eigenvalue Evolution of Qd in Predict-Only vs. Full MEKF](docs/report_figures/eigs_of_qd.png)
 
-The tilt angle trajectories I collect support that while the MEKF-correct curbs drift in the tilt estimate, MEKF-correct-disabled does not. This is also an expected result. We also see that MEKF-correct estimates the correct tilt angle, 0 deg, to within a small margin of error– attributable to imperfect mounting of the board to the test fixture. 
+![Symmetry Error of Qd in Predict-Only vs. Full MEKF](docs/report_figures/symmetry_error_of_Qd.png)
 
+![Symmetry Error and Eigenvalue Evolution of S in Predict-Only and Full MEKF](docs/report_figures/symmetry_error_and_eigs_of_S.png)
 
+The resulting symmetry-error ratios remained very small, supporting that the covariance matrices preserved symmetry up to floating-point numerical error. Eigenvalue checks further supported that the relevant matrices preserved their expected definiteness properties. This was an important implementation check because covariance-structure errors can indicate numerical instability, incorrect matrix assembly, sign errors, or inconsistent linearization.
 
-A second test I designed involved examining state covariance drift matters for the case MEKF-correct-disabled and MEKF-correct. To gauge how large state uncertainty was growing over time, I specifically looked at the time evolution of the state covariance matrix, i.e. the time evolution of the sum of the variance of all error state elements. For the case of MEKF-correct-disabled, the resulting plot supports that MEKF-correct-disabled causes the trace of the state covariance to grow large. For the case of MEKF-correct, the resulting plot supports that the MEKF-correct step does well to reduce the uncertainty in the state estimate. This is the expected result. 
 
+### 10.4 Measurement Residual Behavior
+The correction step was also evaluated by examining the accelerometer measurement residual. The residual represents the difference between the accelerometer measurement predicted from the current attitude estimate and the accelerometer measurement actually observed by the sensor.
 
-A third test I designed involved examining whether the MEKF maintained the correct mathematical structure of the three covariance matrices that it recursively updates. All covariance matrices must be symmetric. In addition to this symmetry requirement, the error-state covariance matrix and the discretized process noise covariance matrix must be positive semi-definite, while the innovation covariance matrix must be positive definite. If all of the eigenvalues of a matrix are nonnegative, then that matrix is positive semi-definite; if all of the matrix’s eigenvalues are greater than zero, the matrix is positive definite. A matrix is symmetric when its off-diagonal elements correspond, such that the ijth element equals its jith element. In computational linear algebra, as a consequence of floating-point roundoff error, a matrix can be approximately symmetric. An algorithm that, in theory, preserves symmetry may, in computational implementation, only approximately preserve symmetry. 
+![Accelerometer Residual and Norm Evolutions](docs/report_figures/accel_residual_and_norm.png)
 
-So, for this test, I logged the evolution of all covariance matrices for over 100 seconds while the sensor board was motionless and positioned at a level tilt til. I conducted data collection for MEKF-correct-disabled and for MEKF-correct, then I examined eigenvalues and symmetry. The results support that MEKF-correct-disabled and MEKF-correct preserve the correct definiteness for all three covariance matrices. The results also support that both preserve symmetry. These are the expected results. 
+With the sensor held stationary and level, the correction-enabled MEKF maintained a small residual. This supported that the estimated attitude was consistent with the accelerometer gravity-direction measurement under static conditions.
 
+### 10.5 Known-Angle Validation at 18 and 36 Degrees
+The known-angle fixture was then used to test whether the filter converged to physically imposed tilt angles. The sensor board was positioned at approximately 18 degrees and 36 degrees of tilt, and the logged MEKF output was compared against those expected values.
+For both cases, the filter converged quickly to the expected tilt angle within a small margin of error. The remaining error was attributable to fixture alignment, sensor mounting tolerances, and the limited mechanical precision of the 3D-printed angle indexing system.
 
+![Tilt Test at 18 and 36 Deg](docs/report_figures/tilt_setup_and_result_18_and_36.png)
 
+![Drift at 18 and 36 Deg](docs/report_figures/drift_at_18_and_36.png)
 
+As in the 0-degree case, the results showed that roll/pitch tilt was constrained while yaw remained free to drift, which is the expected observability behavior for a gyroscope-accelerometer estimator.
 
+### 10.6 Translational-Acceleration Failure-Mode Test
+A known limitation of a gyroscope-accelerometer MEKF is that the accelerometer correction assumes the accelerometer primarily measures gravity. Significant translational acceleration violates this assumption. If the accelerometer is strongly accelerated linearly, the measured acceleration vector no longer points cleanly along gravity, and the filter may incorrectly interpret translational acceleration as a change in tilt.
 
+To test this failure mode, a prismatic-joint drop-tower mechanism was designed and 3D printed. The sensor board was mounted to the moving portion of the mechanism and translated vigorously up and down while the board’s angular orientation remained approximately fixed.
 
+![Drop Tower Mechanism](docs/report_figures/drop_tower.png)
 
+![Translational Accel Test Residual and Tilt](docs/report_figures/translational_accel_residual_and_tilt.png)
 
+During vigorous translational acceleration, the attitude estimate degraded, as expected. Once the translational disturbance stopped, the tilt estimate returned to approximately 0 degrees. This test supported that the implementation failed in the expected way under a known model-assumption violation and recovered when the assumption became valid again.
 
 
+## 11. Main Result
+The implemented embedded MEKF successfully estimated LSM6DS33 tilt on an ESP32 under FreeRTOS. The validation tests support that accelerometer correction suppresses roll/pitch drift, yaw remains unobservable as expected, covariance matrices preserve the expected symmetry and definiteness properties, measurement residuals remain small under static conditions, and the filter converges to known 0-degree, 18-degree, and 36-degree fixture angles within small mechanical alignment error.
 
-With the sensor board held in the same level orientation, stationary, I proceeded to also confirm that the MEKF-correct step maintains a small measurement residual. The resulting plot supports that it does. The measurement residual is basically the difference between what the MEKF-correct step expects the accelerometer measures, given the nominal quaternion estimate, and what the accelerometer actually measures. 
+The translational-acceleration test further confirmed that the estimator degrades when the accelerometer’s gravity-only measurement assumption is violated and recovers when the disturbance ends. This behavior is consistent with the theoretical limitations of a gyroscope-accelerometer tilt estimator.
 
+## 12. Limitations
+The validation process was sufficient to support basic correctness, but it was not exhaustive. The known-angle fixture provided discrete approximate angle references, but it did not provide high-precision ground truth. The test angles were limited to a small number of manually selected positions. The polling-based acquisition scheme introduced timestamp irregularity, and timestamps were assigned at sample retrieval rather than at the exact sensor measurement instant. The gyroscope noise characterization also showed spectral peaks, indicating that the real sensor environment was not perfectly modeled as white noise.
 
- 
-As a next test, I assessed the MEKF-correct’s drift behavior and ability to settle on the correct tilt angle at both 36 deg tilt and at 18 deg tilt. As expected, the resulting plots support that drift occurs only about the yaw DoF and that the tilt angle estimate settles quickly to within a small margin of error, attributable to mounting imperfections, of the correct value.
+Additionally, because the estimator used only gyroscope and accelerometer measurements, yaw was fundamentally unobservable. The project therefore validated tilt estimation rather than full 3D attitude estimation with absolute heading.
 
+## 13. Future Work
+Future work should extend the validation process to a larger set of known tilt angles and quantify error across angle, time, and tuning-parameter regimes. The polling-based sensor acquisition system should be replaced with a FIFO-based or interrupt-driven scheme so that timestamps more closely correspond to actual sensor measurement times. Filter tuning should also be evaluated under varying levels of translational acceleration, especially in regimes where non-gravitational acceleration becomes comparable to gravity.
+A third sensing modality could also be added to constrain yaw. A magnetometer would provide a heading reference in magnetically clean environments, while a camera-based or external reference system could provide heading information without relying on the local magnetic field.
 
-
-
-
+## 14. Conclusion
+This project demonstrated a complete embedded estimation workflow: first-principles MEKF implementation, register-level IMU interfacing, RTOS task organization, accelerometer calibration, timing and noise analysis, internal covariance verification, physical fixture design, known-angle validation, and failure-mode testing. The resulting system correctly estimated roll/pitch tilt under static conditions and behaved consistently with the theoretical observability and model-assumption limits of a gyroscope-accelerometer MEKF.
