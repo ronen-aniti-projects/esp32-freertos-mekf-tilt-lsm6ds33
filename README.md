@@ -10,7 +10,7 @@ This project implemented and validated a first-principles multiplicative extende
 
 The objective of this project was to implement, from first principles, an embedded multiplicative extended Kalman filter capable of estimating the angular tilt of an LSM6DS33 IMU using gyroscope and accelerometer measurements. The target platform was an ESP32 running FreeRTOS, with the IMU connected over I2C and logged data transmitted to a PC over UART.
 In this project, tilt refers to the observable roll and pitch components of the sensor board’s attitude relative to gravity. Yaw is not directly observable from a gyroscope-accelerometer sensor pair alone because the accelerometer provides a gravity-direction reference but does not constrain rotation about the gravity direction.
-The project was intended to demonstrate the complete engineering chain required to move from estimation theory to embedded implementation and physical validation:
+The project was intended to demonstrate a complete engineering workflow to move from estimation theory to embedded implementation and physical validation:
 
 * interpreting the MEKF mathematical structure;
 * implementing quaternion, matrix, and covariance operations in C;
