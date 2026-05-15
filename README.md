@@ -26,9 +26,9 @@ The project was intended to demonstrate the complete engineering chain required 
 
 A gyroscope measures angular rate. In principle, integrating gyroscope measurements over time can reconstruct orientation. In practice, all gyroscopes exhibit bias and noise, so direct integration accumulates error and causes the estimated attitude to drift.
 
-An accelerometer provides a useful correction signal when the sensor is not undergoing significant translational acceleration. Under static or quasi-static conditions, the accelerometer primarily measures the direction of gravity. That gravity-direction measurement constrains roll and pitch, but not yaw. Therefore, a gyroscope-accelerometer MEKF can estimate tilt robustly, while yaw remains unobservable without an additional reference such as a magnetometer, camera, or external heading measurement.
+An accelerometer provides a useful correction signal when the sensor is not undergoing significant translational acceleration. Under static or quasi-static conditions, the accelerometer primarily measures the direction of gravity. That gravity-direction measurement constrains roll and pitch, but not yaw. Therefore, a gyroscope-accelerometer MEKF can estimate tilt reasonably, while yaw remains unobservable without an additional reference such as a magnetometer, camera, or external heading measurement.
 
-The implemented MEKF follows the indirect attitude-filter structure described by Trawny and Roumeliotis in their 2005 University of Minnesota technical report, Indirect Kalman Filter for 3D Attitude Estimation. The filter maintains two related states:
+The implemented MEKF follows the indirect attitude-filter structure described by Trawny and Roumeliotis in their 2005 University of Minnesota technical report, _Indirect Kalman Filter for 3D Attitude Estimation_. The filter maintains two related states:
 
 1. a _nominal state_, containing the unit quaternion attitude estimate and gyroscope bias estimate;
 2. an _error state_, containing a local small-angle attitude error and gyroscope bias error.
@@ -215,7 +215,7 @@ Additionally, because the estimator used only gyroscope and accelerometer measur
 
 ## 13. Future Work
 Future work should extend the validation process to a larger set of known tilt angles and quantify error across angle, time, and tuning-parameter regimes. The polling-based sensor acquisition system should be replaced with a FIFO-based or interrupt-driven scheme so that timestamps more closely correspond to actual sensor measurement times. Filter tuning should also be evaluated under varying levels of translational acceleration, especially in regimes where non-gravitational acceleration becomes comparable to gravity.
-A third sensing modality could also be added to constrain yaw. A magnetometer would provide a heading reference in magnetically clean environments, while a camera-based or external reference system could provide heading information without relying on the local magnetic field.
+A third sensing modality could also be added to constrain yaw. A magnetometer would provide a heading reference in environments where magnetic interference is sufficiently low, while a camera-based reference system could provide heading information without relying on the local magnetic field.
 
 ## 14. Conclusion
-This project demonstrated a complete embedded estimation workflow: first-principles MEKF implementation, register-level IMU interfacing, RTOS task organization, accelerometer calibration, timing and noise analysis, internal covariance verification, physical fixture design, known-angle validation, and failure-mode testing. The resulting system correctly estimated roll/pitch tilt under static conditions and behaved consistently with the theoretical observability and model-assumption limits of a gyroscope-accelerometer MEKF.
+This project demonstrated a complete embedded estimation project: first-principles MEKF implementation, register-level IMU interfacing, RTOS task organization, accelerometer calibration, timing and noise analysis, internal covariance verification, physical fixture design, known-angle validation, and failure-mode testing. The resulting system correctly estimated roll/pitch tilt under static conditions and behaved consistently with the theoretical observability and model-assumption limits of a gyroscope-accelerometer MEKF.
