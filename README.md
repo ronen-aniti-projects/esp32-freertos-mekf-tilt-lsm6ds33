@@ -200,8 +200,7 @@ To test this failure mode, a prismatic-joint drop-tower mechanism was designed a
 
 ![Translational Accel Test Residual and Tilt](docs/report_figures/translational_accel_residual_and_tilt.png)
 
-During vigorous translational acceleration, the attitude estimate degraded, as expected. Once the translational disturbance stopped, the tilt estimate returned to approximately 0 degrees. This test supported that the implementation failed in the expected way under a known model-assumption violation and recovered when the assumption became valid again.
-
+During vigorous translational acceleration, the attitude estimate degraded, as expected. Once the translational disturbance stopped, the tilt estimate returned to approximately 0 degrees. This supports that the filter is sensitive to non-gravitational acceleration during shaking but can recover once the accelerometer measurement again provides a reliable gravity-direction reference.
 
 ## 11. Main Result
 The implemented embedded MEKF successfully estimated LSM6DS33 tilt on an ESP32 under FreeRTOS. The validation tests support that accelerometer correction suppresses roll/pitch drift, yaw remains unobservable as expected, covariance matrices preserve the expected symmetry and definiteness properties, measurement residuals remain small under static conditions, and the filter converges to known 0-degree, 18-degree, and 36-degree fixture angles within small mechanical alignment error.
@@ -209,7 +208,7 @@ The implemented embedded MEKF successfully estimated LSM6DS33 tilt on an ESP32 u
 The translational-acceleration test further confirmed that the estimator degrades when the accelerometer’s gravity-only measurement assumption is violated and recovers when the disturbance ends. This behavior is consistent with the theoretical limitations of a gyroscope-accelerometer tilt estimator.
 
 ## 12. Limitations
-The validation process was sufficient to support basic correctness, but it was not exhaustive. The known-angle fixture provided discrete approximate angle references, but it did not provide high-precision ground truth. The test angles were limited to a small number of manually selected positions. The polling-based acquisition scheme introduced timestamp irregularity, and timestamps were assigned at sample retrieval rather than at the exact sensor measurement instant. The gyroscope noise characterization also showed spectral peaks, indicating that the real sensor environment was not perfectly modeled as white noise.
+The validation process was sufficient to support basic correctness, but it was not exhaustive. The known-angle fixture provided discrete approximate angle references, but it did not provide high-precision ground truth. The test angles were limited to a small number of manually selected positions. The polling-based acquisition scheme introduced timestamp irregularity, and timestamps were assigned at sample retrieval rather than at the exact sensor measurement instant. The gyroscope noise characterization also showed spectral peaks, indicating that the real sensor process was not perfectly modeled as white noise.
 
 Additionally, because the estimator used only gyroscope and accelerometer measurements, yaw was fundamentally unobservable. The project therefore validated tilt estimation rather than full 3D attitude estimation with absolute heading.
 
@@ -218,4 +217,4 @@ Future work should extend the validation process to a larger set of known tilt a
 A third sensing modality could also be added to constrain yaw. A magnetometer would provide a heading reference in environments where magnetic interference is sufficiently low, while a camera-based reference system could provide heading information without relying on the local magnetic field.
 
 ## 14. Conclusion
-This project demonstrated a complete embedded estimation project: first-principles MEKF implementation, register-level IMU interfacing, RTOS task organization, accelerometer calibration, timing and noise analysis, internal covariance verification, physical fixture design, known-angle validation, and failure-mode testing. The resulting system correctly estimated roll/pitch tilt under static conditions and behaved consistently with the theoretical observability and model-assumption limits of a gyroscope-accelerometer MEKF.
+This project demonstrated a complete embedded estimation workflow that included first-principles MEKF implementation, register-level IMU interfacing, RTOS task organization, accelerometer calibration, timing and noise analysis, internal covariance verification, physical fixture design, known-angle validation, and failure-mode testing. The resulting system correctly estimated roll/pitch tilt under static conditions and behaved consistently with the theoretical observability and model-assumption limits of a gyroscope-accelerometer MEKF.
