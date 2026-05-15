@@ -105,7 +105,7 @@ Second, the frequency content of the same mean-subtracted signals was examined. 
 This analysis helped clarify that the process-noise model is an engineering approximation rather than a perfect description of all measured dynamics.
 
 
-## MEKF Implementation
+## 8. MEKF Implementation
 
 The MEKF implementation consisted of prediction and correction stages.
 
