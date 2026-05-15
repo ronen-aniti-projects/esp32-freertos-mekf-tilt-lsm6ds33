@@ -38,7 +38,7 @@ This separation is necessary because unit quaternions do not form a vector space
 ![State Vector](docs/report_figures/state_vector.png)
 
 
-## System Architecture
+## 3. System Architecture
 The project was implemented as an ESP-IDF firmware application running on an ESP32, with a separate set of Python scripts used on the host PC for debugging, verification, and validation. 
 
 On the embedded side, the firmware was divided into three main modules. The IMU driver, `lsm_driver.c`, handled LSM6DS33 configuration, register-level I2C reads, raw-byte interpretation, unit scaling, timestamping, and accelerometer calibration. The filter module, `MEKF.c`, implemented the prediction and correction steps of the multiplicative extended Kalman filter. The supporting math module, `math_lib.c`, provided the matrix, vector, quaternion, and normalization routines needed by the estimator.
@@ -51,14 +51,14 @@ During initialization, the ESP32 configured the LSM6DS33 for a 208 Hz accelerome
 ![System Architecture](docs/report_figures/architecture.png)
 
 
-## Sensor Driver Implementation
+## 4. Sensor Driver Implementation
 The LSM6DS33 outputs gyroscope and accelerometer measurements as signed 16-bit values distributed across consecutive output registers. Registers `0x22` through `0x2D` contain the gyroscope and accelerometer output data. Each axis measurement is encoded using two registers: the lower-address register contains the least significant byte, and the next register contains the most significant byte. This is a little-endian layout.
 
 The driver interprets each two-byte pair as a signed two’s-complement `int16_t` value, then converts it into physical units using the sensitivity scale factors corresponding to the configured full-scale ranges. The driver uses a 12-byte burst read to acquire all accelerometer and gyroscope axis measurements in one transaction.
 
 Because the project used a polling-based acquisition scheme rather than FIFO or interrupt-driven sampling, the driver explicitly checked the sensor data-ready status before reading output registers. The polling task invoked a data-ready check, verified that both accelerometer and gyroscope samples were fresh, read the output data, and timestamped the sample using `esp_timer_get_time()`.
 
-## Timing Verification
+## 5. Timing Verification
 A key implementation risk in polling-based sensor acquisition is accidentally reading stale data or introducing irregular sample timing. To verify the sampling behavior, the firmware logged thousands of consecutive IMU samples, and the resulting sample-to-sample time intervals were plotted as histograms in Python.
 
 With the IMU output data rate set to 208 Hz, the nominal sensor period is approximately 4.8 ms. When the polling task was configured with a 4 ms period, the expected behavior was that some samples would be acquired after one polling period and some after two polling periods, producing intervals clustered near 4 ms and 8 ms. The observed timing distribution matched this expectation.
@@ -67,7 +67,7 @@ When the polling task period was reduced to 1 ms, the observed sample intervals 
 
 ![Timing Interval 1k and 4k](docs/report_figures/imu_sample_interval_distribution.png)
 
-## Accelerometer Calibration
+## 6. Accelerometer Calibration
 
 Accelerometer calibration was required because the MEKF correction step relies on accelerometer measurements to provide a physically meaningful gravity-direction reference. A biased or mis-scaled accelerometer would directly corrupt the measurement update.
 
