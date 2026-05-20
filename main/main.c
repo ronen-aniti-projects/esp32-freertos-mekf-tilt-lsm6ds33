@@ -23,6 +23,14 @@
 #include "fusion.h"
 #include <math.h>
 #include "math_lib.h"
+#include "esp_err.h"
+
+//////////////////////
+// Debug GPIO
+#include "driver/gpio.h"
+#define DEBUG_IMU_GPIO GPIO_NUM_25 
+
+//////////////
 
 ///////////////////////////////////////////////////////////////
 /* // Implement RAM-based IMU log buffer
@@ -57,7 +65,10 @@ static void imu_poll_task(void *pvParameters){
 
         // Read the IMU
         imu_scaled_sample_t sample = {0}; 
+
+        
         esp_err_t err = lsm6ds33_read_scaled_sample(dev_handle, &sample);
+        
 
         // Read didn't work
         if (err == ESP_ERR_NOT_FOUND){
@@ -125,11 +136,11 @@ static void fusion_task(void* pvParameters){
        
 
         if (xQueueReceive(s_imu_q, &sample, portMAX_DELAY)){
-                    
+            
+            gpio_set_level(DEBUG_IMU_GPIO, 1); // debug 
             fusion_propagate(&fusion_state, &sample);
             fusion_correct(&fusion_state, &sample);
-            
-
+            gpio_set_level(DEBUG_IMU_GPIO, 0); // debug
 
             
             if (count % skip == 0){
@@ -170,6 +181,7 @@ static void logging_task(void *pvParameters){
 
     for (;;) {
         if (xQueueReceive(log_q, &log, portMAX_DELAY)) {
+             
             printf("%lld", log.t_us);
 
             for (int i = 0; i < 4; ++i) {
@@ -203,12 +215,27 @@ static void logging_task(void *pvParameters){
                 }
             }
             printf("\n");
+            
+
         }
     }
 }
         
 void app_main(void){
+
+     // GPIO DEBUG
+
+    gpio_config_t dbg_gpio = {
+        .pin_bit_mask = 1ULL << DEBUG_IMU_GPIO,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&dbg_gpio));
     
+
+     //
     i2c_master_bus_handle_t bus_handle;
     i2c_master_dev_handle_t dev_handle;
     

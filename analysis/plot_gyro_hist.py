@@ -84,11 +84,11 @@ plt.ylabel("count")
 
 plt.subplot(3, 1, 3)
 plt.hist(gz, bins=bins)
-plt.title(r"X-Axis Angular Rate Residual ($\omega_z - \bar{\omega}_z$)")
+plt.title(r"Z-Axis Angular Rate Residual ($\omega_z - \bar{\omega}_z$)")
 plt.xlabel(r"$\omega_z - \bar{\omega}_z$ [rad/s]")
 plt.ylabel("count")
 
-plt.savefig("docs/media/gyro_residual_histograms.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/gyro_residual_histograms.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 

@@ -78,7 +78,7 @@ plt.ylabel(r"$\|\mathbf{S} - \mathbf{S}^{T}\|_F / \|\mathbf{S}\|_F$")
 plt.title(r"Symmetry Error of Innovation Covariance $\mathbf{S}$")
 
 
-plt.savefig("docs/media/p_symmetry_error.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/p_symmetry_error.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # plot the trace of P
@@ -88,7 +88,7 @@ plt.plot(t, P_trace)
 plt.xlabel("time [s]")
 plt.ylabel(r"$\mathrm{tr}(\mathbf{P})$")
 plt.title(r"Evolution of State Error Covariance $\mathbf{P}$")
-plt.savefig("docs/media/p_trace_propagation.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/p_trace_propagation.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # plot all eigs of P to guage the size of uncertainty
@@ -108,7 +108,7 @@ axes[-1].set_xlabel("time [s]")
 #fig.suptitle(r"Eigenvalues of Discrete Gyro Covariance $\mathbf{Q}_d$")
 fig.suptitle(r"Eigenvalues of Innovation Covariance $\mathbf{S}$")
 plt.tight_layout(rect=[0, 0, 1, 0.97])
-plt.savefig("docs/media/p_eigenvalues_over_time.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/p_eigenvalues_over_time.png", dpi=150, bbox_inches="tight")
 
 plt.show()
 
@@ -119,7 +119,7 @@ plt.plot(t, P_trace_attitude)
 plt.xlabel("time [s]")
 plt.ylabel(r"$\mathrm{tr}(\mathbf{P}_{0:3,0:3})$ [rad$^2$]")
 plt.title(r"Propagation-Only Growth of Attitude Error Covariance $\mathbf{P}_{0:3,0:3}$")
-plt.savefig("docs/media/p_trace_attitude_propagation.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/p_trace_attitude_propagation.png", dpi=150, bbox_inches="tight")
 
 plt.show()
 
@@ -131,5 +131,5 @@ plt.plot(t, P_trace_bias)
 plt.xlabel("time [s]")
 plt.ylabel(r"$\mathrm{tr}(\mathbf{P}_{3:6,3:6})$ [rad$^2 / s^2$]")
 plt.title(r"Propagation-Only Growth of Bias Error Covariance $\mathbf{P}_{3:6,3:6}$")
-plt.savefig("docs/media/p_trace_bias_propagation.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/p_trace_bias_propagation.png", dpi=150, bbox_inches="tight")
 plt.show()

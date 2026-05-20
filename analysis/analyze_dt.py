@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 
 plt.style.use("bmh")
-data = np.loadtxt("log/imu_250_2.csv", delimiter=",")
+data = np.loadtxt("log/imu_capture.csv", delimiter=",")
 t_us = data[:,0]
 dt_us = np.diff(t_us)
 
@@ -18,6 +18,6 @@ plt.hist(dt_us, bins=bins)
 plt.title("IMU Sample Interval Distribution")
 plt.xlabel(r"sample interval $\Delta t$ [$\mu$s]")
 plt.ylabel("sample count")
-plt.savefig("docs/media/imu_sample_interval_distribution.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/imu_sample_interval_distribution.png", dpi=150, bbox_inches="tight")
 
 plt.show()

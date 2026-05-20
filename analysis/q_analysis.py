@@ -146,5 +146,5 @@ ax.set_title(r"Corrected Drift of $\mathbf{R}$")
 ########################################################
 ax.set_box_aspect([1, 1, 1])
 ax.legend()
-plt.savefig("docs/media/q_drift_prop_only.png", dpi=150, bbox_inches="tight")
+#plt.savefig("docs/media/q_drift_prop_only.png", dpi=150, bbox_inches="tight")
 plt.show()

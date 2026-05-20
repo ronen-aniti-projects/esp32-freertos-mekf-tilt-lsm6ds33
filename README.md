@@ -67,6 +67,14 @@ When the polling task period was reduced to 1 ms, the observed sample intervals 
 
 ![Timing Interval 1k and 4k](docs/report_figures/imu_sample_interval_distribution.png)
 
+## 6. Embedded Runtime Measurement
+
+To evaluate the computational cost of the estimator, GPIO timing pulses were added around the MEKF prediction step, correction step, and full predict-correct update. These pulses were captured with a logic analyzer using PulseView and exported for offline analysis. Pulse width was used as a direct measurement of firmware execution time.
+
+Across 1058 full-update measurements, the complete MEKF predict-correct update required a mean runtime of 702 us, with a worst observed runtime of 1151 us. Relative to the 4.81 ms sample period corresponding to the 208 Hz IMU output data rate, this represented approximately 14.6% average utilization and 23.9% worst-observed utilization. This supported that the estimator was computationally feasible on the ESP32 and left substantial timing margin for IMU acquisition, logging, and FreeRTOS scheduling.
+
+![MEKF Runtime from GPIO Timing](docs/report_figures/mekf_runtime_gpio_timing.png)
+
 ## 6. Accelerometer Calibration
 
 Accelerometer calibration was required because the MEKF correction step relies on accelerometer measurements to provide a physically meaningful gravity-direction reference. A biased or mis-scaled accelerometer would directly corrupt the measurement update.
@@ -218,3 +226,12 @@ A third sensing modality could also be added to constrain yaw. A magnetometer wo
 
 ## 14. Conclusion
 This project demonstrated a complete embedded estimation workflow that included first-principles MEKF implementation, register-level IMU interfacing, RTOS task organization, accelerometer calibration, timing and noise analysis, internal covariance verification, physical fixture design, known-angle validation, and failure-mode testing. The resulting system correctly estimated roll/pitch tilt under static conditions and behaved consistently with the theoretical observability and model-assumption limits of a gyroscope-accelerometer MEKF.
+
+## 15. Addenda
+### 15.1 Embedded Runtime Measurement
+
+After the main validation work, estimator runtime was measured by capturing GPIO timing pulses with a logic analyzer and PulseView. Separate captures were taken for the MEKF prediction step, correction step, and full predict-correct update, allowing the individual stages and complete estimator update to be compared.
+
+The full MEKF update was the primary real-time feasibility measurement. Across 1058 full-update measurements, the complete predict-correct update required a mean runtime of 702 us and a maximum observed runtime of 1151 us, consuming 14.6% and 23.9% of the 4.81 ms sample period respectively. This supported that the estimator was computationally feasible on the ESP32 at the configured 208 Hz IMU output rate.
+
+![MEKF Runtime from GPIO Timing](docs/report_figures/mekf_runtime_from_gpio_trace.png)
