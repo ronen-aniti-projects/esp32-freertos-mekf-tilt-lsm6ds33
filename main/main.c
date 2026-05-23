@@ -246,6 +246,8 @@ static void logging_task(void *pvParameters){
                 }
             }
             printf("\n");
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(1));
             
 
         }
@@ -272,25 +274,22 @@ void app_main(void){
     lsm6ds33_init(&bus_handle, &dev_handle);  
     lsm6ds33_configure(dev_handle);
 
-    // log header
-    //printf("t_us,ax,ay,az,gx,gy,gz\n");
-
     // queue create - stores latest sample
     s_imu_q = xQueueCreate(1, sizeof(imu_scaled_sample_t)); 
 
     // log queue
     log_q = xQueueCreate(64, sizeof(fusion_log_t));
 
-    xTaskCreate(imu_noise_char_task, "imu_noise_char_task", 4096, (void *)dev_handle, 8, NULL);
+    //xTaskCreate(imu_noise_char_task, "imu_noise_char_task", 4096, (void *)dev_handle, 8, NULL);
 
     // imu poll task
-    //xTaskCreate(imu_poll_task, "imu_poll_task", 4096, (void *)dev_handle, 8, NULL);
+    xTaskCreate(imu_poll_task, "imu_poll_task", 4096, (void *)dev_handle, 8, NULL);
 
     //fusion task
-    //xTaskCreate(fusion_task,   "fusion_task",   4096, NULL,               7, NULL);
+    xTaskCreate(fusion_task,   "fusion_task",   4096, NULL,               7, NULL);
 
     // logging task
-    //xTaskCreate(logging_task, "logging_task", 4096, NULL, 6, NULL);
+    xTaskCreate(logging_task, "logging_task", 4096, NULL, 6, NULL);
 
 
     //ESP_ERROR_CHECK(i2c_master_bus_rm_device(dev_handle));

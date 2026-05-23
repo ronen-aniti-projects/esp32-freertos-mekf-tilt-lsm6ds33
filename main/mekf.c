@@ -16,7 +16,11 @@ static const float P0_ANGULAR = 1e-1f;                        // Guess quaternio
 static const float P0_BIAS    = 1e-1f;                        // Guess bias uncertainty [rad^2/s^2]
 
 // Used to construct an initial R matrix (R0)
-static const float ACCEL_VARIANCE = 1e-2f;     
+static const float ACCEL_VARIANCE_X = 2.2516e-4f; //0.00022515988705110087f;
+static const float ACCEL_VARIANCE_Y = 9.1427e-5f; //9.14265774959415e-05;
+static const float ACCEL_VARIANCE_Z = 9.1123e-4f; //0.0009112292088931403f;
+
+static const float ACCEL_VARIANCE = (ACCEL_VARIANCE_X + ACCEL_VARIANCE_Y + ACCEL_VARIANCE_Z) / 3.0f;     
 
 // Constant matrix used in MARS lab MEKF paper
 const float gc_matrix[6][6] = { {-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
