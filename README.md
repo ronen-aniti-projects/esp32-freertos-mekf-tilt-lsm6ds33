@@ -228,7 +228,8 @@ The full MEKF update was the primary real-time feasibility measurement. Across 1
 
 ![MEKF Runtime from GPIO Timing](docs/report_figures/mekf_runtime_from_gpio_trace.png)
 
-### 15.2 Accelerometer Noise Characterization
+## 16. Follow-On Work
+### 16.1 Accelerometer Noise Characterization
 The accelerometer noise measurements supported that the zero-mean Gaussian white-noise assumption used in the MEKF measurement model was a practical approximation, but not a complete description of the true sensor noise behavior. Stationary accelerometer data were collected over 23.3 s, and after subtracting the sample mean from each axis, the measured residual variances were 2.25e-4, 9.14e-5, and 9.11e-4 (m/s^2)^2 for the x, y, and z axes, respectively. The residual skewness values were 0.035, 0.052, and 0.011, while the residual kurtosis values were 2.62, 3.15, and 2.36.
 
 ![Accelerometer Noise Distribution](docs/report_figures/accel_noise_histograms.png)
@@ -237,9 +238,9 @@ Lomb-Scargle periodograms of the same residual signals showed several spectral p
 
 ![Accelerometer Power Spectra](docs/report_figures/accel_noise_power_spectrum.png)
 
-### 15.3 Filter Noise Parameter Selection
-The MEKF covariance choices combined measured sensor noise, isotropic approximations, and a small number of manually tuned parameters. The gyroscope rate-noise terms used the stationary gyroscope residual variances of 5.5886e-6, 4.9785e-6, and 1.7574e-6 (rad/s)^2 for the x, y, and z axes, respectively. These sampled variances were multiplied by the nominal sample interval before being used in the continuous-time process-noise discretization, and the resulting axis-specific values were averaged to match the isotropic gyroscope-noise assumption in the implemented MEKF.
+### 16.2 Filter Noise Parameter Selection
+The MEKF covariance choices implemented in `mekf.c` combined measured sensor noise, isotropic approximations, and a small number of manually tuned parameters. The gyroscope rate-noise constants used the stationary gyroscope residual variances of 5.5886e-6, 4.9785e-6, and 1.7574e-6 (rad/s)^2 for the x, y, and z axes, respectively. These sampled variances were multiplied by the nominal sample interval before being used in the continuous-time process-noise discretization, and the resulting axis-specific values were averaged to match the isotropic gyroscope-noise assumption in the implemented MEKF.
 
-The original accelerometer measurement-noise variance was an approximate tuning value. After the main validation work, stationary accelerometer noise characterization produced residual variances of 2.2516e-4, 9.1427e-5, and 9.1123e-4 (m/s^2)^2 for the x, y, and z axes, respectively. Because the accelerometer update is a discrete measurement update, these sampled variances were used directly to inform the measurement-noise covariance, with the three values averaged for the implemented isotropic model.
+The original accelerometer measurement-noise variance was an approximate tuning value. After the main validation work, stationary accelerometer noise characterization produced residual variances of 2.2516e-4, 9.1427e-5, and 9.1123e-4 (m/s^2)^2 for the x, y, and z axes, respectively. These values were then implemented as accelerometer variance constants in `mekf.c`; because the accelerometer update is a discrete measurement update, the sampled variances were used directly to inform the measurement-noise covariance, with the three values averaged for the implemented isotropic model.
 
-The gyroscope bias random-walk variance and initial error-state covariance were not directly identified from stationary data, so they remained tuning parameters.
+The gyroscope bias random-walk variance and initial error-state covariance constants in `mekf.c` were not directly identified from stationary data, so they remained tuning parameters.
