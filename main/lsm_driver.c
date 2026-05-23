@@ -4,7 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "imu.h"
+#include "lsm_driver.h"
 #include <stdbool.h>
 #include "math_lib.h"
 

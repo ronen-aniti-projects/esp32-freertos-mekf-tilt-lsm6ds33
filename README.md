@@ -227,3 +227,12 @@ After the main validation work, estimator runtime was measured by capturing GPIO
 The full MEKF update was the primary real-time feasibility measurement. Across 1058 full-update measurements, the complete predict-correct update required a mean runtime of 702 us and a maximum observed runtime of 1151 us, consuming 14.6% and 23.9% of the 4.81 ms sample period respectively. This supported that the estimator was computationally feasible on the ESP32 at the configured 208 Hz IMU output rate.
 
 ![MEKF Runtime from GPIO Timing](docs/report_figures/mekf_runtime_from_gpio_trace.png)
+
+### 15.2 Accelerometer Noise Characterization
+The accelerometer noise measurements supported that the zero-mean Gaussian white-noise assumption used in the MEKF measurement model was a practical approximation, but not a complete description of the true sensor noise behavior. Stationary accelerometer data were collected over 23.3 s, and after subtracting the sample mean from each axis, the measured residual variances were 2.25e-4, 9.14e-5, and 9.11e-4 (m/s^2)^2 for the x, y, and z axes, respectively. The residual skewness values were 0.035, 0.052, and 0.011, while the residual kurtosis values were 2.62, 3.15, and 2.36.
+
+![Accelerometer Noise Distribution](docs/report_figures/accel_noise_histograms.png)
+
+Lomb-Scargle periodograms of the same residual signals showed several spectral peaks across all three axes.
+
+![Accelerometer Power Spectra](docs/report_figures/accel_noise_power_spectrum.png)

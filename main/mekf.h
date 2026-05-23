@@ -2,7 +2,7 @@
 
 #include <stdint.h> 
 #include <stdbool.h>
-#include "imu.h"
+#include "lsm_driver.h"
 
 
 typedef struct {
