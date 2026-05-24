@@ -245,18 +245,18 @@ Lomb-Scargle periodograms of the same residual signals showed several spectral p
 ![Accelerometer Power Spectra](docs/report_figures/accel_noise_power_spectrum.png)
 
 ### 16.2 Filter Noise Parameter Selection
-The MEKF follows the zero-mean, Gaussian, white, isotropic noise model assumed by Trawny and Roumeliotis. Since this model uses one variance for each noise source rather than separate axis-specific variances, stationary sensor measurements were averaged into the isotropic values used in `mekf.c`.
+The MEKF follows the zero-mean, Gaussian, white, isotropic noise model assumed by Trawny and Roumeliotis. Since this model uses one variance for each noise source rather than separate x-, y-, and z-axis variances, stationary sensor measurements were used to estimate axis-specific variances, which were then averaged into the isotropic values used in `mekf.c`.
 
-Stationary gyroscope data were used to estimate the rate-noise variance along each sensor axis.
+For the gyroscope, stationary data provided rate-noise variance estimates along each sensor axis.
 
 ![Gyroscope Sample Variance](docs/report_figures/gyro_sample_variance.png)
 
-These sampled variances were converted for use in the continuous-time process-noise model by multiplying by the nominal sample interval. The resulting axis-specific values were then averaged to match the isotropic gyroscope-noise model used in the firmware.
+Because the gyroscope noise enters the continuous-time process model, the sampled variances were multiplied by the nominal sample interval before being used in the process-noise discretization.
 
-Stationary accelerometer data were used to estimate the measurement-noise variance along each sensor axis.
+For the accelerometer, stationary data provided measurement-noise variance estimates along each sensor axis.
 
 ![Accelerometer Sample Variance](docs/report_figures/accel_sample_variance.png)
 
-Because the accelerometer correction is a discrete measurement update, these sampled variances were used directly to inform the measurement-noise covariance. The implemented MEKF again used an averaged isotropic value.
+Because the accelerometer correction is a discrete measurement update, the sampled variances were used directly to inform the measurement-noise covariance.
 
 The gyroscope bias random-walk variance and initial error-state covariance were not directly identified from stationary data, so they remained tuning parameters.
