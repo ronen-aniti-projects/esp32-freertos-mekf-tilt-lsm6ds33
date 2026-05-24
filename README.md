@@ -230,7 +230,13 @@ The full MEKF update was the primary real-time feasibility measurement. Across 1
 
 ## 16. Follow-On Work
 ### 16.1 Accelerometer Noise Characterization
-The accelerometer noise measurements supported that the zero-mean Gaussian white-noise assumption used in the MEKF measurement model was a practical approximation, but not a complete description of the true sensor noise behavior. Stationary accelerometer data were collected over 23.3 s, and after subtracting the sample mean from each axis, the measured residual variances were 2.25e-4, 9.14e-5, and 9.11e-4 (m/s^2)^2 for the x, y, and z axes, respectively. The residual skewness values were 0.035, 0.052, and 0.011, while the residual kurtosis values were 2.62, 3.15, and 2.36.
+The accelerometer noise measurements support that the zero-mean Gaussian white-noise assumption used in the MEKF measurement model is a practical approximation, but not a complete description of the true sensor noise behavior.
+
+Stationary accelerometer data were collected over 23.3 s. After subtracting the sample mean from each axis, the residual statistics were:
+
+![Accelerometer Residual Statistics](docs/report_figures/accelerometer_residual_statistics.png)
+
+The residual variances were small, and the skewness values were close to zero, supporting a roughly zero-mean symmetric noise approximation. The kurtosis values were near, but not exactly equal to, the Gaussian reference value of 3, indicating that the measured noise was only approximately Gaussian.
 
 ![Accelerometer Noise Distribution](docs/report_figures/accel_noise_histograms.png)
 
