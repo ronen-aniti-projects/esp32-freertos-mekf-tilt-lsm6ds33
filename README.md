@@ -245,15 +245,15 @@ Lomb-Scargle periodograms of the same residual signals showed several spectral p
 ![Accelerometer Power Spectra](docs/report_figures/accel_noise_power_spectrum.png)
 
 ### 16.2 Filter Noise Parameter Selection
-The noise-parameter selection supports that the MEKF tuning was grounded in measured sensor behavior where possible, while still relying on a few practical isotropic approximations and tuning choices.
+The MEKF follows the zero-mean, Gaussian, white, isotropic noise model assumed by Trawny and Roumeliotis. Since this model uses one variance for each noise source rather than separate axis-specific variances, stationary sensor measurements were averaged into the isotropic values used in `mekf.c`.
 
-For the gyroscope rate noise, stationary residual variances were measured as:
+Stationary gyroscope data were used to estimate the rate-noise variance along each sensor axis.
 
 ![Gyroscope Sample Variance](docs/report_figures/gyro_sample_variance.png)
 
 These sampled variances were converted for use in the continuous-time process-noise model by multiplying by the nominal sample interval. The resulting axis-specific values were then averaged to match the isotropic gyroscope-noise model used in the firmware.
 
-For the accelerometer measurement noise, stationary residual variances were measured as:
+Stationary accelerometer data were used to estimate the measurement-noise variance along each sensor axis.
 
 ![Accelerometer Sample Variance](docs/report_figures/accel_sample_variance.png)
 
